@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>easePDF Toolkit – Free Online PDF Tools</title>
+    <meta name="description" content="A complete suite of free, secure PDF tools. Merge, split, compress, convert, extract tables to Excel, and more – entirely in your browser.">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Core Libraries -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/downloadjs@1.4.7"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header class="header" id="header">
+    <nav class="navbar">
+        <a href="#" class="logo">ease<span>PDF</span></a>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="#home">Home</a></li>
+            <li><a href="#tools-section">All Tools</a></li>
+        </ul>
+        <div class="hamburger" id="hamburger">
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+        </div>
+    </nav>
+</header>
+
+<!-- ── MAIN ── -->
+<main id="home">
+
+    <!-- Hero -->
+    <section class="hero">
+        <div class="hero-tag">100% Client-side · No uploads</div>
+        <h1>Every PDF tool you need, <em>in one place</em></h1>
+        <p>Free, private &amp; instant. Your files never leave your browser — all processing happens on your device.</p>
+        <div class="hero-badges">
+            <span class="hero-badge">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                No file uploads
+            </span>
+            <span class="hero-badge">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                Completely free
+            </span>
+            <span class="hero-badge">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                Works offline
+            </span>
+        </div>
+    </section>
+
+    <!-- Tools -->
+    <section class="tools-section" id="tools-section">
+        <div class="section-header">
+            <h2>All Tools</h2>
+            <p>Click any tool to get started instantly.</p>
+        </div>
+        <div class="cat-pills" id="cat-pills"></div>
+        <div class="tools-grid" id="tools-grid"></div>
+    </section>
+
+</main>
+
+<!-- ── TOOL MODAL ── -->
+<div id="tool-modal" class="modal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <div class="modal-head-icon" id="modal-icon">📄</div>
+            <h2 id="modal-title">Tool</h2>
+            <button class="close-btn" id="close-modal">✕</button>
+        </div>
+        <div class="modal-body">
+
+            <!-- Drop zone -->
+            <div id="drop-zone">
+                <input type="file" id="file-input" multiple style="display:none">
+                <div class="dz-icon">📂</div>
+                <p>Drag &amp; drop your file here, or</p>
+                <button class="upload-btn" onclick="document.getElementById('file-input').click()">Browse file</button>
+            </div>
+
+            <!-- File list -->
+            <div id="file-list"></div>
+
+            <!-- PDF Preview Panel -->
+            <div id="pdf-preview-panel">
+                <div class="preview-panel-head">
+                    <div class="preview-panel-title">
+                        PDF Preview · <span id="preview-total-pages">0</span> pages
+                    </div>
+                    <div class="preview-nav">
+                        <button class="preview-nav-btn" id="prev-page-btn" disabled>‹</button>
+                        <span class="preview-page-info">
+                            <span id="cur-page-num">1</span> / <span id="total-page-num">1</span>
+                        </span>
+                        <button class="preview-nav-btn" id="next-page-btn" disabled>›</button>
+                    </div>
+                </div>
+                <div class="preview-canvas-wrap">
+                    <div class="preview-loading" id="preview-loading">
+                        <div class="mini-spin"></div>
+                        <p>Rendering preview…</p>
+                    </div>
+                    <canvas id="pdf-preview-canvas"></canvas>
+                </div>
+                <div class="preview-thumb-strip" id="preview-thumb-strip"></div>
+            </div>
+
+            <!-- Tool options (injected by JS) -->
+            <div id="tool-options"></div>
+
+            <!-- Process button -->
+            <button id="process-btn" disabled>Process</button>
+
+            <!-- Output area -->
+            <div id="output-area"></div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ── LOADER ── -->
+<div id="loader-overlay">
+    <div class="spinner"></div>
+    <p id="loader-text">Processing…</p>
+</div>
+
+<!-- ── TOAST ── -->
+<div class="toast" id="toast"></div>
+
+<!-- ── FOOTER ── -->
+<footer>
+    <p>© 2026 <strong>easePDF Toolkit</strong> — All processing happens locally in your browser.</p>
+</footer>
+
+<!-- App logic -->
+<script src="js/app.js"></script>
+
+</body>
+</html>
