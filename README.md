@@ -27,7 +27,7 @@ All tools run **100% in the browser** using WebAssembly and JavaScript — your 
 
 ## 🚀 Live Demo
 
-🔗 [https://easepdf-toolkit.vercel.app](https://easepdf-toolkit.vercel.app) *(update with your Vercel URL)*
+🔗 [https://easepdf-toolkit.vercel.app](https://easepdf-toolkit.vercel.app) 
 
 ---
 
