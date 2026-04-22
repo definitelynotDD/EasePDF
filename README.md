@@ -153,27 +153,6 @@ Then visit `http://localhost:3000`.
 
 ---
 
-## ☁️ Deploy to Vercel
-
-This is a **pure static site** — no build step, no backend.
-
-### Option 1: Via Vercel Dashboard (easiest)
-
-1. Push this repo to GitHub
-2. Go to [vercel.com](https://vercel.com) → **Add New Project**
-3. Import your GitHub repository
-4. Set **Framework Preset** to `Other`
-5. Leave all build settings blank
-6. Click **Deploy** ✅
-
-### Option 2: Via Vercel CLI
-
-```bash
-npm i -g vercel
-vercel --prod
-```
-
----
 
 ## 🤝 Contributing
 
