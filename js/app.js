@@ -544,7 +544,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             return `
                 <div style="margin-top:20px">
-                    <div style="font-size:.82rem;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">
+                    <div style="font-size:.82rem;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0;margin-bottom:10px">
                         ✅ ${allTables.length} table${allTables.length > 1 ? 's' : ''} found
                     </div>
                     <div class="table-nav" id="tbl-nav">${pills}</div>
@@ -718,6 +718,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── CATEGORIES ────────────────────────────────────────────────────────
     const categories = ['All', ...new Set(Object.values(toolImplementations).map(t => t.category))];
     let activeCategory = 'All';
+    document.getElementById('tool-count').textContent = `${Object.keys(toolImplementations).length} free tools`;
 
     const catPillsEl = document.getElementById('cat-pills');
     categories.forEach(cat => {
