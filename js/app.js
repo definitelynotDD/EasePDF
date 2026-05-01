@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentToolId = null;
     let selectedFiles = [];
+    const MAX_FILE_SIZE_MB = 100;
+    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
     // ── PDF PREVIEW STATE ─────────────────────────────────────────────────
     let previewPDFDoc = null;
@@ -180,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     cv.width = vp.width; cv.height = vp.height;
                     await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
                     const imgData = cv.toDataURL('image/jpeg', quality);
-                    const imgBytes = await fetch(imgData).then(r => r.arrayBuffer());
+                    const imgBytes = dataUrlToBytes(imgData);
                     const img = await newDoc.embedJpg(imgBytes);
                     newDoc.addPage([cv.width, cv.height]).drawImage(img, { x: 0, y: 0, width: cv.width, height: cv.height });
                 }
@@ -434,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showLoader('Converting…');
                 const result = await mammoth.convertToHtml({ arrayBuffer: await selectedFiles[0].arrayBuffer() });
                 const el = document.createElement('div');
-                el.innerHTML = result.value;
+                el.innerHTML = sanitizeHtml(result.value);
                 const blob = await html2pdf().from(el).set({
                     margin: [15, 15, 15, 15], filename: 'converted.pdf',
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -455,9 +457,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const wb = XLSX.read(await selectedFiles[0].arrayBuffer(), { type: 'buffer' });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const el = document.createElement('div');
-                el.innerHTML = XLSX.utils.sheet_to_html(ws);
+                el.innerHTML = sanitizeHtml(XLSX.utils.sheet_to_html(ws));
                 const style = document.createElement('style');
-                style.innerHTML = `table{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:10px}th,td{border:1px solid #ddd;text-align:left;padding:4px}th{background:#f2f2f2;font-weight:bold}`;
+                style.textContent = `table{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:10px}th,td{border:1px solid #ddd;text-align:left;padding:4px}th{background:#f2f2f2;font-weight:bold}`;
                 el.prepend(style);
                 const blob = await html2pdf().from(el).set({
                     margin: 10, filename: 'from_excel.pdf',
@@ -564,7 +566,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const out = document.getElementById('output-area');
         const refresh = () => {
-            out.innerHTML = buildHTML();
+            out.innerHTML = sanitizeHtml(buildHTML());
             const url = URL.createObjectURL(blob);
             const baseName = origFilename.replace(/\.pdf$/i, '');
             out.querySelector('#dl-excel-btn').href = url;
@@ -583,6 +585,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!str) return '';
         return String(str)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function sanitizeHtml(html) {
+        return window.DOMPurify ? DOMPurify.sanitize(html) : escHtml(html);
+    }
+
+    function dataUrlToBytes(dataUrl) {
+        const base64 = dataUrl.split(',')[1] || '';
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes;
     }
 
     // ── PDF PREVIEW ENGINE ────────────────────────────────────────────────
@@ -730,7 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const badge = tool.badge === 'new'
                 ? '<span class="badge-new">New</span>'
                 : tool.badge === 'hot' ? '<span class="badge-hot">🔥</span>' : '';
-            card.innerHTML = `${badge}<div class="t-icon">${tool.icon}</div><h3>${tool.title}</h3><p>${tool.desc}</p>`;
+            card.innerHTML = sanitizeHtml(`${badge}<div class="t-icon">${escHtml(tool.icon)}</div><h3>${escHtml(tool.title)}</h3><p>${escHtml(tool.desc)}</p>`);
             card.addEventListener('click', () => openModal(id));
             grid.appendChild(card);
         });
@@ -747,7 +761,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('drop-zone');
     dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
     dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.classList.remove('dragover'); });
-    dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        handleFiles(e.dataTransfer.files);
+    });
     fileInput.addEventListener('change', e => handleFiles(e.target.files));
 
     document.getElementById('process-btn').addEventListener('click', async () => {
@@ -777,7 +795,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fileInput.multiple = tool.multiple || false;
         const optEl = document.getElementById('tool-options');
         if (tool.options) {
-            optEl.innerHTML = tool.options();
+            optEl.innerHTML = sanitizeHtml(tool.options());
             optEl.querySelectorAll('input[type=range]').forEach(slider => {
                 const valSpan = document.getElementById(slider.id + '-val');
                 if (valSpan) { valSpan.textContent = slider.value; slider.oninput = () => valSpan.textContent = slider.value; }
@@ -802,6 +820,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const tool = toolImplementations[currentToolId];
         if (!tool) return;
         const arr = Array.from(files);
+        const oversized = arr.filter(f => f.size > MAX_FILE_SIZE_BYTES);
+        if (oversized.length > 0) {
+            showToast(`File too large. Max size is ${MAX_FILE_SIZE_MB}MB.`);
+            fileInput.value = '';
+            return;
+        }
         if (tool.fileType) {
             const allowed = tool.fileType.split(',').map(e => e.trim().toLowerCase());
             const valid = arr.filter(f => allowed.includes('.' + f.name.split('.').pop().toLowerCase()));
@@ -831,7 +855,14 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedFiles.forEach((f, i) => {
             const item = document.createElement('div');
             item.className = 'file-item';
-            item.innerHTML = `<span class="file-item-name">📎 ${f.name}</span><button class="remove-file-btn" data-i="${i}">×</button>`;
+            const name = document.createElement('span');
+            name.className = 'file-item-name';
+            name.textContent = `File: ${f.name}`;
+            const remove = document.createElement('button');
+            remove.className = 'remove-file-btn';
+            remove.dataset.i = i;
+            remove.textContent = 'Remove';
+            item.append(name, remove);
             el.appendChild(item);
         });
         el.querySelectorAll('.remove-file-btn').forEach(btn => btn.addEventListener('click', e => {
@@ -858,15 +889,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showOutputMessage(msg) {
-        document.getElementById('output-area').innerHTML =
-            `<div style="padding:14px;background:var(--bg);border-radius:8px;font-size:.88rem;color:var(--muted);margin-top:16px">${msg}</div>`;
+        const out = document.getElementById('output-area');
+        out.innerHTML = '';
+        const message = document.createElement('div');
+        message.style.cssText = 'padding:14px;background:var(--bg);border-radius:8px;font-size:.88rem;color:var(--muted);margin-top:16px';
+        message.textContent = msg;
+        out.appendChild(message);
     }
 
     function createDownloadLink(data, filename, type) {
         const blob = new Blob([data], { type });
         const url = URL.createObjectURL(blob);
-        document.getElementById('output-area').innerHTML =
-            `<a class="dl-btn" href="${url}" download="${filename}">⬇ Download ${filename}</a>`;
+        const out = document.getElementById('output-area');
+        out.innerHTML = '';
+        const link = document.createElement('a');
+        link.className = 'dl-btn';
+        link.href = url;
+        link.download = filename;
+        link.textContent = `Download ${filename}`;
+        out.appendChild(link);
     }
 
     // ── UI UTILITIES ──────────────────────────────────────────────────────
