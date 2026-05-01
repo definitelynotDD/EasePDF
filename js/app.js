@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `,
             process: async (options) => {
-                showLoader('Loading PDF…');
+                showLoader('Loading PDF for table extraction…');
                 const pdfBytes = await selectedFiles[0].arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
                 const numPages = pdf.numPages;
@@ -127,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `,
             process: async (options) => {
-                showLoader('Splitting PDF…');
+                showLoader('Splitting selected PDF pages…');
                 const range = options['page-range'];
                 if (!range) throw new Error('Page range is required.');
                 const pdfBytes = await selectedFiles[0].arrayBuffer();
@@ -209,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `,
             process: async (options) => {
-                showLoader('Rotating…');
+                showLoader('Rotating PDF pages…');
                 const angle = parseInt(options['rotation-angle']);
                 const bytes = await selectedFiles[0].arrayBuffer();
                 const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -243,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `,
             process: async (options) => {
-                showLoader('Adding page numbers…');
+                showLoader('Adding page numbers to PDF…');
                 const bytes = await selectedFiles[0].arrayBuffer();
                 const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
                 const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `,
             process: async (options) => {
-                showLoader('Adding watermark…');
+                showLoader('Adding watermark to PDF…');
                 const text = options['watermark-text'];
                 const fontSize = parseInt(options['watermark-size']);
                 const opacity = parseFloat(options['watermark-opacity']);
@@ -346,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fileType: '.jpg,.jpeg',
             multiple: true,
             process: async () => {
-                showLoader('Converting…');
+                showLoader('Converting JPG images to PDF…');
                 const doc = await PDFDocument.create();
                 for (const f of selectedFiles) {
                     const img = await doc.embedJpg(await f.arrayBuffer());
@@ -364,7 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fileType: '.png',
             multiple: true,
             process: async () => {
-                showLoader('Converting…');
+                showLoader('Converting PNG images to PDF…');
                 const doc = await PDFDocument.create();
                 for (const f of selectedFiles) {
                     const img = await doc.embedPng(await f.arrayBuffer());
@@ -382,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fileType: '.pdf',
             multiple: false,
             process: async () => {
-                showLoader('Converting…');
+                showLoader('Converting PDF pages to JPG…');
                 const bytes = await selectedFiles[0].arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
                 const zip = new JSZip();
@@ -407,7 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fileType: '.pdf',
             multiple: false,
             process: async () => {
-                showLoader('Extracting text…');
+                showLoader('Extracting text from PDF…');
                 const bytes = await selectedFiles[0].arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
                 let allText = '';
@@ -433,7 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fileType: '.docx',
             multiple: false,
             process: async () => {
-                showLoader('Converting…');
+                showLoader('Converting Word document to PDF…');
                 const result = await mammoth.convertToHtml({ arrayBuffer: await selectedFiles[0].arrayBuffer() });
                 const el = document.createElement('div');
                 el.innerHTML = sanitizeHtml(result.value);
@@ -453,7 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fileType: '.xlsx',
             multiple: false,
             process: async () => {
-                showLoader('Converting…');
+                showLoader('Converting Excel sheet to PDF…');
                 const wb = XLSX.read(await selectedFiles[0].arrayBuffer(), { type: 'buffer' });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const el = document.createElement('div');
@@ -756,7 +756,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileInput = document.getElementById('file-input');
 
     document.getElementById('close-modal').addEventListener('click', closeModal);
+    document.getElementById('browse-file-btn').addEventListener('click', () => fileInput.click());
     modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && modal.style.display === 'block') closeModal();
+    });
 
     const dropZone = document.getElementById('drop-zone');
     dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });

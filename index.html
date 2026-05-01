@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>easePDF Toolkit – Free Online PDF Tools</title>
     <meta name="description" content="A complete suite of free, secure PDF tools. Merge, split, compress, convert, extract tables to Excel, and more – entirely in your browser.">
+    <meta name="theme-color" content="#f43f5e">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="apple-touch-icon" href="assets/screenshots/hero.png">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="easePDF Toolkit">
+    <meta property="og:title" content="easePDF Toolkit – Free Online PDF Tools">
+    <meta property="og:description" content="Merge, split, compress, convert, and extract PDF content privately in your browser.">
+    <meta property="og:image" content="assets/screenshots/hero.png">
+    <meta property="og:image:alt" content="easePDF Toolkit home screen showing browser-based PDF tools">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="easePDF Toolkit – Free Online PDF Tools">
+    <meta name="twitter:description" content="Free, private PDF tools that run entirely in your browser.">
+    <meta name="twitter:image" content="assets/screenshots/hero.png">
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -94,7 +107,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"/>
                 </svg>
-                Works offline
+                No account needed
             </span>
         </div>
     </section>
@@ -126,7 +139,7 @@
                 <input type="file" id="file-input" multiple style="display:none">
                 <div class="dz-icon">📂</div>
                 <p>Drag &amp; drop your file here, or</p>
-                <button class="upload-btn" onclick="document.getElementById('file-input').click()">Browse file</button>
+                <button class="upload-btn" id="browse-file-btn" type="button">Browse file</button>
             </div>
 
             <!-- File list -->
