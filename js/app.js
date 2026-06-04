@@ -91,6 +91,107 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
+        'ocr-pdf': {
+            title: 'OCR PDF',
+            desc: 'Extract text from scanned / image PDFs (and images) using in-browser OCR.',
+            icon: '🔍',
+            category: 'Extract',
+            fileType: '.pdf,.jpg,.jpeg,.png',
+            multiple: false,
+            badge: 'new',
+            options: () => `
+                <div class="option-group">
+                    <label for="ocr-lang">Document language</label>
+                    <select id="ocr-lang">
+                        <option value="eng">English</option>
+                        <option value="spa">Spanish</option>
+                        <option value="fra">French</option>
+                        <option value="deu">German</option>
+                        <option value="ita">Italian</option>
+                        <option value="por">Portuguese</option>
+                        <option value="nld">Dutch</option>
+                        <option value="hin">Hindi</option>
+                        <option value="rus">Russian</option>
+                        <option value="ara">Arabic</option>
+                        <option value="chi_sim">Chinese (Simplified)</option>
+                        <option value="jpn">Japanese</option>
+                    </select>
+                </div>
+                <div class="option-group">
+                    <label>Render quality</label>
+                    <div class="range-row">
+                        <input type="range" id="ocr-scale" min="1" max="4" step="1" value="2">
+                        <span class="range-val" id="ocr-scale-val">2</span>
+                    </div>
+                    <p style="font-size:.78rem;color:var(--muted);margin-top:4px">Higher = sharper input &amp; better accuracy on small text, but slower.</p>
+                </div>
+                <p style="font-size:.78rem;color:var(--muted)">⚡ The OCR engine &amp; language data download on first run, then everything is processed locally in your browser — nothing is uploaded.</p>
+            `,
+            process: async (options) => {
+                if (typeof Tesseract === 'undefined') {
+                    throw new Error('OCR engine failed to load. Check your connection and try again.');
+                }
+                const lang = options['ocr-lang'] || 'eng';
+                const scale = parseFloat(options['ocr-scale']) || 2;
+                const file = selectedFiles[0];
+                const isPdf = file.name.toLowerCase().endsWith('.pdf');
+
+                showLoader('Loading OCR engine…');
+                const worker = await Tesseract.createWorker(lang, 1, {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            showLoader(`Recognizing text… ${Math.round((m.progress || 0) * 100)}%`);
+                        }
+                    }
+                });
+
+                const pageTexts = [];
+                try {
+                    if (isPdf) {
+                        const bytes = await file.arrayBuffer();
+                        const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            showLoader(`OCR page ${i} of ${pdf.numPages}…`);
+                            const pg = await pdf.getPage(i);
+                            const vp = pg.getViewport({ scale });
+                            const cv = document.createElement('canvas');
+                            cv.width = vp.width; cv.height = vp.height;
+                            await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+                            const { data: { text } } = await worker.recognize(cv);
+                            pageTexts.push((text || '').trim());
+                        }
+                    } else {
+                        showLoader('Recognizing text…');
+                        const url = URL.createObjectURL(file);
+                        try {
+                            const { data: { text } } = await worker.recognize(url);
+                            pageTexts.push((text || '').trim());
+                        } finally {
+                            URL.revokeObjectURL(url);
+                        }
+                    }
+                } finally {
+                    await worker.terminate();
+                }
+
+                const plainText = pageTexts.join('\n\n');
+                if (!plainText.trim()) {
+                    hideLoader();
+                    showOutputMessage('⚠️ No text could be recognized. Try a higher render quality, a clearer scan, or check the selected language.');
+                    return;
+                }
+
+                showLoader('Building downloads…');
+                const txtBlob = new Blob([plainText], { type: 'text/plain' });
+                const paragraphs = plainText.split('\n').map(t => new docx.Paragraph({ children: [new docx.TextRun(t)] }));
+                const docxDoc = new docx.Document({ sections: [{ children: paragraphs }] });
+                const docxBlob = await docx.Packer.toBlob(docxDoc);
+
+                hideLoader();
+                renderOcrResult(pageTexts, plainText, txtBlob, docxBlob, file.name);
+            }
+        },
+
         'merge-pdf': {
             title: 'Merge PDF',
             desc: 'Combine multiple PDFs into one document.',
@@ -579,6 +680,54 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         };
         refresh();
+    }
+
+    // ── OCR RESULT ────────────────────────────────────────────────────────
+    function renderOcrResult(pageTexts, plainText, txtBlob, docxBlob, origFilename) {
+        const baseName = origFilename.replace(/\.(pdf|png|jpe?g)$/i, '');
+        const out = document.getElementById('output-area');
+        out.innerHTML = sanitizeHtml(`
+            <div style="margin-top:20px">
+                <div style="font-size:.82rem;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:10px">
+                    ✅ OCR complete · ${pageTexts.length} page${pageTexts.length > 1 ? 's' : ''} · ${plainText.length} characters
+                </div>
+                <div class="preview-wrap">
+                    <div class="preview-label">
+                        <span>Extracted text</span>
+                        <span>${pageTexts.length} page${pageTexts.length > 1 ? 's' : ''}</span>
+                    </div>
+                    <textarea id="ocr-text-area" readonly
+                        style="width:100%;min-height:240px;border:none;outline:none;resize:vertical;padding:14px;font-family:'DM Sans',monospace;font-size:.86rem;line-height:1.5;background:transparent;color:inherit;box-sizing:border-box">${escHtml(plainText)}</textarea>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+                    <button class="dl-btn" id="ocr-copy-btn" type="button" style="cursor:pointer;border:none">📋 Copy text</button>
+                    <a href="#" class="dl-btn" id="ocr-txt-btn">⬇ Download .txt</a>
+                    <a href="#" class="dl-btn" id="ocr-docx-btn">⬇ Download .docx</a>
+                </div>
+            </div>
+        `);
+
+        const txtBtn = out.querySelector('#ocr-txt-btn');
+        txtBtn.href = URL.createObjectURL(txtBlob);
+        txtBtn.download = `${baseName}_ocr.txt`;
+
+        const docxBtn = out.querySelector('#ocr-docx-btn');
+        docxBtn.href = URL.createObjectURL(docxBlob);
+        docxBtn.download = `${baseName}_ocr.docx`;
+
+        const copyBtn = out.querySelector('#ocr-copy-btn');
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(plainText);
+                showToast('✅ Text copied to clipboard');
+            } catch {
+                const ta = out.querySelector('#ocr-text-area');
+                ta.removeAttribute('readonly'); ta.select();
+                document.execCommand('copy');
+                ta.setAttribute('readonly', '');
+                showToast('✅ Text copied to clipboard');
+            }
+        });
     }
 
     function escHtml(str) {

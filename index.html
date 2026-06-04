@@ -63,6 +63,10 @@
         src="https://unpkg.com/docx@8.5.0/build/index.umd.js"
         integrity="sha384-4xaIisuLEy2lo2HkB2C4rEf7v8jbTb2kuogX6TkuEt9feTWKBSFSOzsqNNbV+sKh"
         crossorigin="anonymous"></script>
+    <!-- OCR engine (Tesseract.js, runs entirely in-browser via WASM) -->
+    <script
+        src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"
+        crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -115,7 +119,7 @@
     <!-- Tools -->
     <section class="tools-section" id="tools-section">
         <div class="section-header">
-            <h2>All Tools <span id="tool-count">14 free tools</span></h2>
+            <h2>All Tools <span id="tool-count">15 free tools</span></h2>
             <p>Pick a tool — your files never leave your device.</p>
         </div>
         <div class="cat-pills" id="cat-pills"></div>
