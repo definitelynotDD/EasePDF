@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `,
             process: async (options) => {
                 if (typeof Tesseract === 'undefined') {
-                    throw new Error('OCR engine failed to load. Check your connection and try again.');
+                    throw new Error('OCR engine (Tesseract.js) could not load — it may be blocked by the page’s Content-Security-Policy. Ensure cdn.jsdelivr.net is allowed.');
                 }
                 const lang = options['ocr-lang'] || 'eng';
                 const scale = parseFloat(options['ocr-scale']) || 2;

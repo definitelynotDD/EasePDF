@@ -20,7 +20,7 @@
 | ✏️ Edit | Add Page Numbers, Watermark PDF |
 | 🔒 Security | Protect PDF (password encryption) |
 | 🔄 Convert | JPG→PDF, PNG→PDF, PDF→JPG, PDF→Word, Word→PDF, Excel→PDF |
-| 📊 Extract | **PDF Tables → Excel** ⭐ |
+| 📊 Extract | **PDF Tables → Excel** ⭐ · **OCR PDF** (scanned → text) |
 | ⚙️ Optimize | Compress PDF |
 
 All tools run **100% in the browser** — your files never leave your device.
@@ -72,7 +72,23 @@ Most PDF tools ignore table data entirely. easePDF Toolkit's table extractor int
 - Tables with or without visible borders (text-position based, not line-based)
 - Optional **first-row-as-header** toggle for clean Excel output
 
-> ⚠️ **Note:** Works on PDFs with selectable/copyable text. Scanned image PDFs require OCR preprocessing.
+> ⚠️ **Note:** Works on PDFs with selectable/copyable text. For scanned/image PDFs, run the **OCR PDF** tool first (see below).
+
+---
+
+## 🔍 OCR PDF — Scanned Documents → Text
+
+> Turn scanned PDFs and images into selectable, searchable text — **entirely in your browser.**
+
+The **OCR PDF** tool uses [Tesseract.js](https://tesseract.projectnaptha.com/) (a WebAssembly port of the Tesseract engine) to recognise text from image-based PDFs and pictures. No server, no uploads — the engine and language data download once, then all recognition runs locally on your device.
+
+### How it works
+
+1. **Upload** a scanned PDF (or a `.jpg` / `.png` image)
+2. Pick the **document language** (English, Spanish, French, German, Hindi, Chinese, Japanese, and more)
+3. Tune **render quality** (1–4) — higher sharpens small text for better accuracy
+4. Each page is rendered with PDF.js, then OCR'd page-by-page with a live progress percentage
+5. Review the extracted text and **copy it**, or download as **`.txt`** or **`.docx`**
 
 <p align="center">
   <img src="assets/screenshots/table-extractor-excel.png" alt="Exported Excel file with multiple sheets" width="100%">
@@ -118,6 +134,7 @@ easepdf-toolkit/
 - **[pdf-lib](https://pdf-lib.js.org/)** — Create and modify PDFs
 - **[PDF.js](https://mozilla.github.io/pdf.js/)** — Render PDF pages for preview & conversion
 - **[SheetJS (xlsx)](https://sheetjs.com/)** — Excel file generation (powers the table extractor)
+- **[Tesseract.js](https://tesseract.projectnaptha.com/)** — In-browser OCR for scanned PDFs & images
 - **[mammoth.js](https://github.com/mwilliamson/mammoth.js)** — DOCX → HTML conversion
 - **[html2pdf.js](https://github.com/eKoopmans/html2pdf.js)** — HTML → PDF rendering
 - **[docx](https://github.com/dolanmiu/docx)** — DOCX file creation

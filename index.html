@@ -63,9 +63,9 @@
         src="https://unpkg.com/docx@8.5.0/build/index.umd.js"
         integrity="sha384-4xaIisuLEy2lo2HkB2C4rEf7v8jbTb2kuogX6TkuEt9feTWKBSFSOzsqNNbV+sKh"
         crossorigin="anonymous"></script>
-    <!-- OCR engine (Tesseract.js, runs entirely in-browser via WASM) -->
+    <!-- OCR engine (Tesseract.js, runs in-browser via WASM; downloads core + language data on first use) -->
     <script
-        src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"
+        src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"
         crossorigin="anonymous"></script>
 </head>
 <body>
