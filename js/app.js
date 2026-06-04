@@ -7,6 +7,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const MAX_FILE_SIZE_MB = 100;
     const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
+    // OCR backend (native Tesseract on Render). Leave '' to use the in-browser
+    // engine only. Set to your deployed URL, e.g. 'https://easepdf-ocr.onrender.com',
+    // and add that origin to connect-src in vercel.json. When set, OCR prefers
+    // the server and falls back to in-browser Tesseract.js if it's unreachable.
+    const OCR_BACKEND_URL = '';
+
     // ── PDF PREVIEW STATE ─────────────────────────────────────────────────
     let previewPDFDoc = null;
     let previewCurrentPage = 1;
@@ -128,50 +134,69 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p style="font-size:.78rem;color:var(--muted)">⚡ The OCR engine &amp; language data download on first run, then everything is processed locally in your browser — nothing is uploaded.</p>
             `,
             process: async (options) => {
-                if (typeof Tesseract === 'undefined') {
-                    throw new Error('OCR engine (Tesseract.js) could not load — it may be blocked by the page’s Content-Security-Policy. Ensure cdn.jsdelivr.net is allowed.');
-                }
                 const lang = options['ocr-lang'] || 'eng';
                 const scale = parseFloat(options['ocr-scale']) || 2;
                 const file = selectedFiles[0];
                 const isPdf = file.name.toLowerCase().endsWith('.pdf');
 
-                showLoader('Loading OCR engine…');
-                const worker = await Tesseract.createWorker(lang, 1, {
-                    logger: m => {
-                        if (m.status === 'recognizing text') {
-                            showLoader(`Recognizing text… ${Math.round((m.progress || 0) * 100)}%`);
-                        }
-                    }
-                });
+                let pageTexts = null;
+                let engine = 'browser'; // which engine actually produced the result
 
-                const pageTexts = [];
-                try {
-                    if (isPdf) {
-                        const bytes = await file.arrayBuffer();
-                        const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-                        for (let i = 1; i <= pdf.numPages; i++) {
-                            showLoader(`OCR page ${i} of ${pdf.numPages}…`);
-                            const pg = await pdf.getPage(i);
-                            const vp = pg.getViewport({ scale });
-                            const cv = document.createElement('canvas');
-                            cv.width = vp.width; cv.height = vp.height;
-                            await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-                            const { data: { text } } = await worker.recognize(cv);
-                            pageTexts.push((text || '').trim());
-                        }
-                    } else {
-                        showLoader('Recognizing text…');
-                        const url = URL.createObjectURL(file);
-                        try {
-                            const { data: { text } } = await worker.recognize(url);
-                            pageTexts.push((text || '').trim());
-                        } finally {
-                            URL.revokeObjectURL(url);
-                        }
+                // 1) Prefer the native Tesseract backend (more accurate) when configured.
+                if (OCR_BACKEND_URL) {
+                    try {
+                        showLoader('Sending to OCR server (native Tesseract)…');
+                        pageTexts = await ocrViaBackend(file, lang);
+                        engine = 'native';
+                    } catch (err) {
+                        console.warn('Backend OCR failed — falling back to in-browser engine:', err);
+                        showToast('⚠️ OCR server unavailable — using in-browser engine');
+                        pageTexts = null;
                     }
-                } finally {
-                    await worker.terminate();
+                }
+
+                // 2) Fall back to in-browser Tesseract.js (fully client-side).
+                if (!pageTexts) {
+                    if (typeof Tesseract === 'undefined') {
+                        throw new Error('OCR engine (Tesseract.js) could not load — it may be blocked by the page’s Content-Security-Policy. Ensure cdn.jsdelivr.net is allowed.');
+                    }
+                    showLoader('Loading OCR engine…');
+                    const worker = await Tesseract.createWorker(lang, 1, {
+                        logger: m => {
+                            if (m.status === 'recognizing text') {
+                                showLoader(`Recognizing text… ${Math.round((m.progress || 0) * 100)}%`);
+                            }
+                        }
+                    });
+
+                    pageTexts = [];
+                    try {
+                        if (isPdf) {
+                            const bytes = await file.arrayBuffer();
+                            const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+                            for (let i = 1; i <= pdf.numPages; i++) {
+                                showLoader(`OCR page ${i} of ${pdf.numPages}…`);
+                                const pg = await pdf.getPage(i);
+                                const vp = pg.getViewport({ scale });
+                                const cv = document.createElement('canvas');
+                                cv.width = vp.width; cv.height = vp.height;
+                                await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+                                const { data: { text } } = await worker.recognize(cv);
+                                pageTexts.push((text || '').trim());
+                            }
+                        } else {
+                            showLoader('Recognizing text…');
+                            const url = URL.createObjectURL(file);
+                            try {
+                                const { data: { text } } = await worker.recognize(url);
+                                pageTexts.push((text || '').trim());
+                            } finally {
+                                URL.revokeObjectURL(url);
+                            }
+                        }
+                    } finally {
+                        await worker.terminate();
+                    }
                 }
 
                 const plainText = pageTexts.join('\n\n');
@@ -188,7 +213,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const docxBlob = await docx.Packer.toBlob(docxDoc);
 
                 hideLoader();
-                renderOcrResult(pageTexts, plainText, txtBlob, docxBlob, file.name);
+                showToast(engine === 'native' ? '✅ OCR done by native Tesseract (server)' : '✅ OCR done by in-browser Tesseract.js');
+                renderOcrResult(pageTexts, plainText, txtBlob, docxBlob, file.name, engine);
             }
         },
 
@@ -682,14 +708,40 @@ document.addEventListener('DOMContentLoaded', () => {
         refresh();
     }
 
+    // ── OCR BACKEND (native Tesseract) ────────────────────────────────────
+    async function ocrViaBackend(file, lang) {
+        const base = OCR_BACKEND_URL.replace(/\/+$/, '');
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('lang', lang);
+        const res = await fetch(base + '/ocr', { method: 'POST', body: fd });
+        if (!res.ok) {
+            let msg = `OCR server responded ${res.status}`;
+            try { const j = await res.json(); if (j && j.error) msg = j.error; } catch { /* ignore */ }
+            throw new Error(msg);
+        }
+        const data = await res.json();
+        if (Array.isArray(data.pages) && data.pages.length) {
+            return data.pages.map(t => (t || '').trim());
+        }
+        return [String(data.text || '').trim()];
+    }
+
     // ── OCR RESULT ────────────────────────────────────────────────────────
-    function renderOcrResult(pageTexts, plainText, txtBlob, docxBlob, origFilename) {
+    function renderOcrResult(pageTexts, plainText, txtBlob, docxBlob, origFilename, engine) {
         const baseName = origFilename.replace(/\.(pdf|png|jpe?g)$/i, '');
+        const isNative = engine === 'native';
+        const engineBadge = isNative
+            ? `<span style="font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:999px;background:#dcfce7;color:#166534;white-space:nowrap">🖥️ Native Tesseract (server)</span>`
+            : `<span style="font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:999px;background:#dbeafe;color:#1e40af;white-space:nowrap">🌐 In-browser Tesseract.js</span>`;
         const out = document.getElementById('output-area');
         out.innerHTML = sanitizeHtml(`
             <div style="margin-top:20px">
-                <div style="font-size:.82rem;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:10px">
-                    ✅ OCR complete · ${pageTexts.length} page${pageTexts.length > 1 ? 's' : ''} · ${plainText.length} characters
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+                    <span style="font-size:.82rem;font-weight:700;color:var(--red);text-transform:uppercase">
+                        ✅ OCR complete · ${pageTexts.length} page${pageTexts.length > 1 ? 's' : ''} · ${plainText.length} characters
+                    </span>
+                    ${engineBadge}
                 </div>
                 <div class="preview-wrap">
                     <div class="preview-label">
