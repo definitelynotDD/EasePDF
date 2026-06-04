@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // engine only. Set to your deployed URL, e.g. 'https://easepdf-ocr.onrender.com',
     // and add that origin to connect-src in vercel.json. When set, OCR prefers
     // the server and falls back to in-browser Tesseract.js if it's unreachable.
-    const OCR_BACKEND_URL = '';
+    const OCR_BACKEND_URL = 'https://easepdf-ocr.onrender.com';
 
     // ── PDF PREVIEW STATE ─────────────────────────────────────────────────
     let previewPDFDoc = null;
