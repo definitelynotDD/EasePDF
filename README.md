@@ -90,6 +90,22 @@ The **OCR PDF** tool uses [Tesseract.js](https://tesseract.projectnaptha.com/) (
 4. Each page is rendered with PDF.js, then OCR'd page-by-page with a live progress percentage
 5. Review the extracted text and **copy it**, or download as **`.txt`** or **`.docx`**
 
+### Optional: native Tesseract backend (higher accuracy)
+
+The in-browser engine is fully private but caps out around ~90% accuracy on
+tough scans. For best results you can run the **native Tesseract** engine as a
+tiny backend (see [`server/`](server/README.md)) — e.g. deployed free on Render
+— and point the frontend at it by setting `OCR_BACKEND_URL` in `js/app.js` and
+adding that origin to `connect-src` in `vercel.json`.
+
+When configured, the OCR tool sends the file to the server and uses its result;
+if the server is unreachable it **automatically falls back** to the in-browser
+engine, so the site keeps working either way.
+
+> ⚠️ **Privacy trade-off:** unlike every other tool, the *backend* mode uploads
+> your file to the server for processing. The default in-browser mode keeps
+> everything on your device.
+
 <p align="center">
   <img src="assets/screenshots/table-extractor-excel.png" alt="Exported Excel file with multiple sheets" width="100%">
 </p>

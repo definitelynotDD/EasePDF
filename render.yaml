@@ -1,0 +1,22 @@
+# Render Blueprint for the easePDF native-Tesseract OCR backend.
+# Deploy: push to GitHub, then on render.com → New → Blueprint → pick this repo.
+services:
+  - type: web
+    name: easepdf-ocr
+    runtime: docker
+    rootDir: server
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Lock CORS to your site once deployed (comma-separate multiple origins).
+      # Use "*" to allow any origin while testing.
+      - key: ALLOWED_ORIGIN
+        value: "*"
+      - key: MAX_FILE_MB
+        value: "50"
+      - key: MAX_PAGES
+        value: "50"
+      - key: OCR_DPI
+        value: "300"

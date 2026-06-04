@@ -1,0 +1,27 @@
+name: keep-alive
+
+# Pings the Render OCR backend so the free instance doesn't spin down.
+# Set a repository variable OCR_BACKEND_URL (Settings → Secrets and variables
+# → Actions → Variables) to your backend URL, e.g. https://easepdf-ocr.onrender.com
+#
+# Note: GitHub may pause scheduled workflows after ~60 days of repo inactivity,
+# and cron times can be delayed by a few minutes under load.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        env:
+          URL: ${{ vars.OCR_BACKEND_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "OCR_BACKEND_URL repo variable not set — skipping."
+            exit 0
+          fi
+          echo "Pinging $URL/health"
+          curl -fsS --max-time 60 "$URL/health" || echo "Ping failed (instance may be cold-starting)."
