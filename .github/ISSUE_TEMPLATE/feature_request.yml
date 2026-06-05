@@ -1,0 +1,41 @@
+name: 💡 Feature Request
+description: Suggest a new tool or improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the need or use case.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should the tool/feature do?
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Organize
+        - Edit
+        - Security
+        - Convert
+        - Extract
+        - Optimize
+        - Other
+  - type: checkboxes
+    id: client-side
+    attributes:
+      label: Constraints
+      options:
+        - label: This can run fully client-side (no file uploads)
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered (optional)

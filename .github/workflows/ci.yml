@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Syntax-check frontend JS
+        run: node --check js/app.js
+
+      - name: Validate JSON files
+        run: |
+          for f in vercel.json server/package.json; do
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8')); console.log('valid JSON: $f')"
+          done
+
+      - name: Install & syntax-check backend
+        working-directory: server
+        run: |
+          npm ci
+          node --check index.js
+
+      - name: Build backend Docker image
+        run: docker build -t easepdf-ocr ./server

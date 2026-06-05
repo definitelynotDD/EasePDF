@@ -1,14 +1,47 @@
+<div align="center">
+
 # easePDF Toolkit 🧰
 
-> A complete suite of **free, private, client-side PDF tools** — all processing happens in your browser. No file uploads. No server. No cost.
+### A complete suite of free, privacy-first PDF tools that run entirely in your browser.
 
-<p align="center">
-  <img src="assets/screenshots/hero.png" alt="easePDF Toolkit – Home" width="100%">
-</p>
+**No file uploads · No accounts · No cost.** Every tool processes your files locally on your device — with an optional native-OCR backend for heavy lifting.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?logo=vercel)](https://vercel.com)
-![Made with HTML CSS JS](https://img.shields.io/badge/Built%20with-HTML%20%7C%20CSS%20%7C%20JS-orange)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-easepdf--toolkit.vercel.app-f43f5e?style=for-the-badge)](https://easepdf-toolkit.vercel.app)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e.svg)](LICENSE)
+[![Frontend: Vercel](https://img.shields.io/badge/Frontend-Vercel-000?logo=vercel)](https://vercel.com)
+[![Backend: Render](https://img.shields.io/badge/OCR_Backend-Render-46E3B7?logo=render&logoColor=white)](https://render.com)
+[![CI](https://github.com/definitelynotDD/EasePDF/actions/workflows/ci.yml/badge.svg)](https://github.com/definitelynotDD/EasePDF/actions/workflows/ci.yml)
+![Built with](https://img.shields.io/badge/Built_with-HTML_%7C_CSS_%7C_JS-orange)
+
+<img src="assets/screenshots/hero.png" alt="easePDF Toolkit – Home" width="100%">
+
+</div>
+
+---
+
+## 📑 Table of Contents
+
+- [Overview](#-overview)
+- [Features](#-features)
+- [Spotlight Features](#-spotlight-features)
+- [Architecture](#-architecture)
+- [Tech Stack](#-tech-stack)
+- [Project Structure](#-project-structure)
+- [Running Locally](#-running-locally)
+- [Deployment](#-deployment)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+---
+
+## 🔭 Overview
+
+**easePDF Toolkit** is a zero-backend-by-default web app offering **15 PDF tools** — merge, split, compress, convert, watermark, extract tables to Excel, OCR, and more. The core design principle: **your files never leave your device.** All standard tools run 100% client-side using WebAssembly and JS libraries; nothing is uploaded to a server.
+
+The one exception is **OCR**, which offers a **hybrid architecture**: it prefers a self-hosted native [Tesseract](https://github.com/tesseract-ocr/tesseract) backend for maximum accuracy, but **automatically falls back** to an in-browser WebAssembly engine if the server is unavailable — so the app degrades gracefully and never breaks.
+
+> **Why it's interesting (engineering-wise):** client-side document processing, a graceful-degradation hybrid OCR pipeline, a hardened Content-Security-Policy, a containerized microservice, and a free-tier keep-alive strategy — all in a dependency-light, build-step-free codebase.
 
 ---
 
@@ -16,192 +49,172 @@
 
 | Category | Tools |
 |---|---|
-| 📦 Organize | Merge PDF, Split PDF, Rotate PDF |
-| ✏️ Edit | Add Page Numbers, Watermark PDF |
-| 🔒 Security | Protect PDF (password encryption) |
-| 🔄 Convert | JPG→PDF, PNG→PDF, PDF→JPG, PDF→Word, Word→PDF, Excel→PDF |
-| 📊 Extract | **PDF Tables → Excel** ⭐ · **OCR PDF** (scanned → text) |
-| ⚙️ Optimize | Compress PDF |
+| 📦 **Organize** | Merge PDF · Split PDF · Rotate PDF |
+| ✏️ **Edit** | Add Page Numbers · Watermark PDF |
+| 🔒 **Security** | Protect PDF (password encryption) |
+| 🔄 **Convert** | JPG→PDF · PNG→PDF · PDF→JPG · PDF→Word · Word→PDF · Excel→PDF |
+| 📊 **Extract** | **PDF Tables → Excel** ⭐ · **OCR PDF** (scanned → text) ⭐ |
+| ⚙️ **Optimize** | Compress PDF |
 
-All tools run **100% in the browser** — your files never leave your device.
-
----
-
-## 🖼️ Screenshots
-
-### Home — All Tools at a Glance
-<p align="center">
-  <img src="assets/screenshots/home-all-tools.png" alt="Home screen showing all tool cards" width="100%">
-</p>
-
-### Category Filter
-<p align="center">
-  <img src="assets/screenshots/category-filter.png" alt="Filtering tools by category" width="100%">
-</p>
-
-### Tool Modal — Drag & Drop + Live PDF Preview
-<p align="center">
-  <img src="assets/screenshots/tool-modal-preview.png" alt="Tool modal with live PDF preview and thumbnail strip" width="100%">
-</p>
+Every standard tool runs **100% in the browser** — files never leave your device.
 
 ---
 
-## 📊 Spotlight: PDF Tables → Excel
+## 🌟 Spotlight Features
 
-> **The standout feature of easePDF Toolkit.**
+### 📊 PDF Tables → Excel
 
-Most PDF tools ignore table data entirely. easePDF Toolkit's table extractor intelligently detects tabular structure from any text-based PDF and exports every table as its own sheet in a `.xlsx` file — all without a server.
+Most PDF tools ignore tabular data. easePDF's extractor detects table structure from text-based PDFs — clustering text by Y-coordinate into rows and grouping by X-position into columns — and exports every detected table as its own sheet in a single `.xlsx`, with a tunable sensitivity slider and a live preview.
 
-<p align="center">
-  <img src="assets/screenshots/table-extractor-upload.png" alt="Table extractor – uploading a PDF" width="48%">
-&nbsp;&nbsp;
-  <img src="assets/screenshots/table-extractor-result.png" alt="Table extractor – detected tables preview" width="48%">
-</p>
+### 🔍 OCR PDF — Hybrid Engine
 
-### How it works
+Turns **scanned PDFs and images into selectable text**, with a two-tier engine:
 
-1. **Upload** any text-based PDF
-2. The engine clusters text items by Y-coordinate to detect rows, then groups columns by X-position
-3. A **sensitivity slider** (1–5) lets you tune detection — higher values catch loosely spaced tables
-4. Every detected table is shown in a **live preview** with pill navigation (e.g. `Pg 1 · T1`, `Pg 2 · T1`)
-5. All tables export into a single `.xlsx` file, **one sheet per table**, with auto-sized columns
+| Mode | Engine | Where it runs | Accuracy |
+|---|---|---|---|
+| **Native** (preferred) | Native Tesseract + poppler | Render backend | Highest |
+| **Fallback** (automatic) | Tesseract.js (WASM) | The browser | ~90% |
 
-### What it detects
+If the backend is configured and reachable, OCR runs there and the UI shows a green **🖥️ Native** badge; otherwise it transparently falls back to the in-browser engine (blue **🌐** badge) so the feature **always works**. Results can be copied or exported as `.txt` / `.docx`.
 
-- Multi-page tables across any number of PDF pages
-- Tables with or without visible borders (text-position based, not line-based)
-- Optional **first-row-as-header** toggle for clean Excel output
-
-> ⚠️ **Note:** Works on PDFs with selectable/copyable text. For scanned/image PDFs, run the **OCR PDF** tool first (see below).
+> ⚠️ **Privacy note:** standard tools never upload anything. Only the *native OCR* mode sends the file to the backend for processing; the in-browser fallback keeps everything local.
 
 ---
 
-## 🔍 OCR PDF — Scanned Documents → Text
+## 🏗 Architecture
 
-> Turn scanned PDFs and images into selectable, searchable text — **entirely in your browser.**
+The project is two independently deployed halves that communicate only over a single HTTP endpoint:
 
-The **OCR PDF** tool uses [Tesseract.js](https://tesseract.projectnaptha.com/) (a WebAssembly port of the Tesseract engine) to recognise text from image-based PDFs and pictures. No server, no uploads — the engine and language data download once, then all recognition runs locally on your device.
+```mermaid
+flowchart LR
+    U([User's Browser])
 
-### How it works
+    subgraph V["Frontend · Vercel (static)"]
+        FE["HTML · CSS · Vanilla JS<br/>14 in-browser tools<br/>pdf-lib · PDF.js · SheetJS"]
+    end
 
-1. **Upload** a scanned PDF (or a `.jpg` / `.png` image)
-2. Pick the **document language** (English, Spanish, French, German, Hindi, Chinese, Japanese, and more)
-3. Tune **render quality** (1–4) — higher sharpens small text for better accuracy
-4. Each page is rendered with PDF.js, then OCR'd page-by-page with a live progress percentage
-5. Review the extracted text and **copy it**, or download as **`.txt`** or **`.docx`**
+    subgraph R["OCR Backend · Render (Docker)"]
+        BE["Express API<br/>native tesseract + poppler"]
+    end
 
-### Optional: native Tesseract backend (higher accuracy)
+    U --> FE
+    FE -- "scanned PDF / image" --> Q{"backend configured<br/>& reachable?"}
+    Q -- yes --> BE
+    Q -- "no / offline" --> WASM["In-browser Tesseract.js<br/>(WASM fallback)"]
+    BE -- "extracted text" --> FE
+    WASM -- "extracted text" --> FE
 
-The in-browser engine is fully private but caps out around ~90% accuracy on
-tough scans. For best results you can run the **native Tesseract** engine as a
-tiny backend (see [`server/`](server/README.md)) — e.g. deployed free on Render
-— and point the frontend at it by setting `OCR_BACKEND_URL` in `js/app.js` and
-adding that origin to `connect-src` in `vercel.json`.
+    CRON["cron-job.org<br/>every 5 min"] -- "GET /health" --> BE
+```
 
-When configured, the OCR tool sends the file to the server and uses its result;
-if the server is unreachable it **automatically falls back** to the in-browser
-engine, so the site keeps working either way.
+**Design decisions:**
 
-> ⚠️ **Privacy trade-off:** unlike every other tool, the *backend* mode uploads
-> your file to the server for processing. The default in-browser mode keeps
-> everything on your device.
-
-<p align="center">
-  <img src="assets/screenshots/table-extractor-excel.png" alt="Exported Excel file with multiple sheets" width="100%">
-</p>
+- **Client-side first** — all non-OCR tools use WASM/JS libs, so there's no server to run, scale, or pay for, and user files stay private.
+- **Graceful degradation** — the OCR tool tries the native backend, catches any failure (cold start, CORS, offline), and falls back to WASM without the user hitting a dead end.
+- **Hardened CSP** — a strict `Content-Security-Policy` whitelists exactly the script/connect/worker origins required (CDN libs, the OCR WASM `data:` core, and the backend), blocking everything else.
+- **Free-tier keep-alive** — Render's free instance sleeps after 15 min idle; an external cron pings `/health` every 5 min to keep the native engine warm, with cold-start fallback handled client-side.
 
 ---
 
-## 🚀 Live Demo
+## 🛠 Tech Stack
 
-🔗 [https://easepdf-toolkit.vercel.app](https://easepdf-toolkit.vercel.app) 
+**Frontend**
+- [pdf-lib](https://pdf-lib.js.org/) — create & modify PDFs
+- [PDF.js](https://mozilla.github.io/pdf.js/) — render pages for preview & conversion
+- [SheetJS](https://sheetjs.com/) — Excel generation (table extractor)
+- [Tesseract.js](https://tesseract.projectnaptha.com/) — in-browser OCR (WASM)
+- [mammoth.js](https://github.com/mwilliamson/mammoth.js) · [html2pdf.js](https://github.com/eKoopmans/html2pdf.js) · [docx](https://github.com/dolanmiu/docx) · [JSZip](https://stuk.github.io/jszip/) · [DOMPurify](https://github.com/cure53/DOMPurify)
+
+**Backend** (`server/`)
+- Node.js + [Express](https://expressjs.com/) · [Multer](https://github.com/expressjs/multer)
+- Native [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) + [Poppler](https://poppler.freedesktop.org/) (`pdftoppm`)
+- Docker
+
+**Infrastructure**
+- Vercel (frontend) · Render (backend, Docker) · cron-job.org (keep-alive) · GitHub Actions (CI)
 
 ---
 
 ## 📁 Project Structure
 
 ```
-easepdf-toolkit/
+EasePDF/
+├── index.html                  # Frontend entry — markup + CDN <script> tags
+├── css/style.css               # All styling
+├── js/app.js                   # All app logic: 15 tools, PDF preview, OCR (backend + WASM fallback)
+├── vercel.json                 # Vercel config + hardened Content-Security-Policy
 │
-├── index.html                  # HTML structure and library <script> tags only
-├── css/
-│   └── style.css               # All custom styling
-├── js/
-│   └── app.js                  # All JavaScript logic (tools, preview, UI)
-├── assets/
-│   └── screenshots/
-│       ├── hero.png                      # Banner / hero shot
-│       ├── home-all-tools.png            # Full tools grid
-│       ├── category-filter.png           # Category pill filtering
-│       ├── tool-modal-preview.png        # Modal with PDF preview
-│       ├── table-extractor-upload.png    # Table tool – upload step
-│       ├── table-extractor-result.png    # Table tool – preview step
-│       └── table-extractor-excel.png     # Exported Excel result
+├── server/                     # Native Tesseract OCR backend (deploys to Render)
+│   ├── index.js                #   Express API: POST /ocr, GET /health
+│   ├── Dockerfile              #   Node + tesseract-ocr (12 langs) + poppler-utils
+│   ├── render.* / package.json #   deps & deploy config
+│   └── README.md               #   Backend API + deploy guide
 │
-├── .gitignore                  # Ignores system & editor files
-├── LICENSE                     # MIT License
-└── README.md                   # This file
+├── render.yaml                 # Render Blueprint (Docker, free plan, health check)
+├── .github/
+│   ├── workflows/              #   ci.yml (validation) + keep-alive.yml (cron ping)
+│   ├── ISSUE_TEMPLATE/         #   bug & feature templates
+│   └── PULL_REQUEST_TEMPLATE.md
+└── assets/screenshots/         # README images
 ```
 
 ---
 
-## 🛠️ Tech Stack
+## 🏃 Running Locally
 
-- **[pdf-lib](https://pdf-lib.js.org/)** — Create and modify PDFs
-- **[PDF.js](https://mozilla.github.io/pdf.js/)** — Render PDF pages for preview & conversion
-- **[SheetJS (xlsx)](https://sheetjs.com/)** — Excel file generation (powers the table extractor)
-- **[Tesseract.js](https://tesseract.projectnaptha.com/)** — In-browser OCR for scanned PDFs & images
-- **[mammoth.js](https://github.com/mwilliamson/mammoth.js)** — DOCX → HTML conversion
-- **[html2pdf.js](https://github.com/eKoopmans/html2pdf.js)** — HTML → PDF rendering
-- **[docx](https://github.com/dolanmiu/docx)** — DOCX file creation
-- **[JSZip](https://stuk.github.io/jszip/)** — ZIP bundling for multi-file exports
-- **[Syne](https://fonts.google.com/specimen/Syne) + [DM Sans](https://fonts.google.com/specimen/DM+Sans)** — Typography via Google Fonts
-
----
-
-## 🏃 Run Locally
-
-No build step required:
+No build step for the frontend:
 
 ```bash
-# Clone the repo
-git clone https://github.com/YOUR_USERNAME/easepdf-toolkit.git
-cd easepdf-toolkit
+git clone https://github.com/definitelynotDD/EasePDF.git
+cd EasePDF
 
-# Open directly in browser
-open index.html
+# Serve the static site
+python -m http.server 3000      # → http://localhost:3000
+# or: npx serve .
 ```
 
-Or use a local server for best results:
+Optional — run the native OCR backend (requires `tesseract` + `poppler`):
 
 ```bash
-# Python
-python -m http.server 3000
+cd server
+npm install
+npm start                       # → http://localhost:10000
 
-# Node (npx)
-npx serve .
+# then set OCR_BACKEND_URL in js/app.js to http://localhost:10000
 ```
 
-Then visit `http://localhost:3000`.
+See [`server/README.md`](server/README.md) for the full backend guide.
 
 ---
 
+## 🚀 Deployment
+
+| Component | Platform | How |
+|---|---|---|
+| **Frontend** | Vercel | Connect the repo; auto-deploys `main`. Headers/CSP from `vercel.json`. |
+| **OCR backend** | Render | New → Blueprint (reads `render.yaml`, builds `server/Dockerfile`). |
+| **Keep-alive** | cron-job.org | HTTP monitor → `GET /…/health` every 5 min. |
+
+After deploying the backend, set `OCR_BACKEND_URL` in `js/app.js` and add the origin to `connect-src` in `vercel.json`. Details in [`server/README.md`](server/README.md).
+
+---
 
 ## 🤝 Contributing
 
-Contributions are welcome! To add a new tool:
-
-1. Fork the repo and create a new branch: `git checkout -b feature/my-new-tool`
-2. Add your tool definition inside the `toolImplementations` object in `js/app.js`
-3. Follow the existing structure: `title`, `desc`, `icon`, `category`, `fileType`, `options()`, `process()`
-4. Test locally, then open a pull request
+Contributions are welcome! Adding a tool is intentionally simple — each is a single entry in the `toolImplementations` map in `js/app.js`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, and our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ---
 
 ## 📄 License
 
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+Licensed under the **MIT License** — see [LICENSE](LICENSE).
 
 ---
 
-<p align="center">Made with ❤️ · All processing happens in your browser · No data ever leaves your device</p>
+<div align="center">
+
+Built by **[Your Name]** · [LinkedIn](https://linkedin.com/in/your-handle) · [GitHub](https://github.com/definitelynotDD)
+
+Made with ❤️ — all standard processing happens in your browser, no data ever leaves your device.
+
+</div>
