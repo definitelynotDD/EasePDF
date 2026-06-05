@@ -10,13 +10,17 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
-      # Lock CORS to your site once deployed (comma-separate multiple origins).
-      # Use "*" to allow any origin while testing.
+      # CORS allow-list. Locked to the production site so other websites can't
+      # freeload on this backend. Comma-separate to add preview domains, e.g.
+      # "https://easepdf-toolkit.vercel.app,https://easepdf-toolkitvercelapp-git-main-….vercel.app".
+      # Use "*" only for local testing.
       - key: ALLOWED_ORIGIN
-        value: "*"
+        value: "https://easepdf-toolkit.vercel.app"
       - key: MAX_FILE_MB
         value: "50"
       - key: MAX_PAGES
         value: "50"
       - key: OCR_DPI
         value: "300"
+      - key: RATE_LIMIT_MAX        # OCR requests per minute per IP
+        value: "20"

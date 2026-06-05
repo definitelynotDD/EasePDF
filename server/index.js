@@ -13,6 +13,7 @@
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
+const rateLimit = require('express-rate-limit');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs/promises');
@@ -26,6 +27,7 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 const MAX_FILE_MB = parseInt(process.env.MAX_FILE_MB || '50', 10);
 const MAX_PAGES = parseInt(process.env.MAX_PAGES || '50', 10);
 const DPI = parseInt(process.env.OCR_DPI || '300', 10);
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '20', 10); // OCR requests/min/IP
 const EXEC_BUFFER = 1024 * 1024 * 128; // 128 MB stdout cap for tesseract/pdftoppm
 
 // Languages we ship traineddata for — MUST match the tesseract-ocr-* packages
@@ -37,6 +39,7 @@ const SUPPORTED_LANGS = new Set([
 
 const app = express();
 app.disable('x-powered-by');
+app.set('trust proxy', 1); // Render runs behind a proxy — needed for correct client IPs
 app.use(cors({
   origin: ALLOWED_ORIGIN === '*' ? true : ALLOWED_ORIGIN.split(',').map(s => s.trim()),
   methods: ['GET', 'POST', 'OPTIONS']
@@ -47,11 +50,20 @@ const upload = multer({
   limits: { fileSize: MAX_FILE_MB * 1024 * 1024, files: 1 }
 });
 
+// Rate limit the expensive OCR endpoint (per IP). Returns 429 + Retry-After.
+const ocrLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many OCR requests — please wait a minute and try again.' }
+});
+
 app.get('/health', (req, res) => res.type('text/plain').send('ok'));
 app.get('/', (req, res) =>
   res.type('text/plain').send('easePDF OCR backend — POST a file to /ocr (field "file").'));
 
-app.post('/ocr', upload.single('file'), async (req, res) => {
+app.post('/ocr', ocrLimiter, upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded — use multipart field name "file".' });
   }
@@ -93,8 +105,8 @@ app.post('/ocr', upload.single('file'), async (req, res) => {
 
     res.json({ engine: 'tesseract-native', lang, pages: pageTexts, text: pageTexts.join('\n\n') });
   } catch (err) {
-    console.error('[ocr] failed:', err);
-    res.status(500).json({ error: err.message || 'OCR failed.' });
+    console.error('[ocr] failed:', err); // full detail in server logs only
+    res.status(500).json({ error: 'OCR processing failed. Please try a different file or try again later.' });
   } finally {
     fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   }
@@ -105,8 +117,8 @@ app.use((err, req, res, next) => {
   if (err && err.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({ error: `File too large — max ${MAX_FILE_MB} MB.` });
   }
-  console.error('[error]', err);
-  res.status(500).json({ error: err.message || 'Server error.' });
+  console.error('[error]', err); // full detail in server logs only
+  res.status(500).json({ error: 'Server error.' });
 });
 
 function pageNum(filename) {
