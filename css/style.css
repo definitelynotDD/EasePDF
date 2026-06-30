@@ -272,6 +272,28 @@ body {
     flex: 1; font-size: .85rem; font-weight: 500;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.file-item-ord {
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px;
+    background: var(--ink); color: #fff;
+    border-radius: 50%;
+    font-size: .72rem; font-weight: 700;
+    font-family: 'Syne', sans-serif;
+}
+.file-reorder-btn {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px;
+    width: 26px; height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--ink-soft);
+    font-size: .9rem; line-height: 1;
+    transition: background .15s, border-color .15s, color .15s, opacity .15s;
+}
+.file-reorder-btn:hover:not(:disabled) {
+    background: var(--bg); border-color: var(--red); color: var(--red);
+}
+.file-reorder-btn:disabled { opacity: .3; cursor: not-allowed; }
 .remove-file-btn {
     background: none; border: none; cursor: pointer;
     color: var(--muted); font-size: 1.1rem;
@@ -320,6 +342,7 @@ body {
 
 /* Output */
 #output-area { margin-top: 20px; }
+.output-preview-actions { margin-top: 14px; }
 .dl-btn {
     display: flex; align-items: center; justify-content: center; gap: 8px;
     padding: 13px 20px; border-radius: 10px;

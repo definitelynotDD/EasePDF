@@ -236,7 +236,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     copied.forEach(p => mergedPdf.addPage(p));
                 }
                 const bytes = await mergedPdf.save();
-                createDownloadLink(bytes, 'merged.pdf', 'application/pdf');
+                hideLoader();
+                await showPDFOutputPreview(bytes, 'merged.pdf');
             }
         },
 
@@ -276,7 +277,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const copied = await newPdf.copyPages(pdfDoc, uniq);
                 copied.forEach(p => newPdf.addPage(p));
                 const bytes = await newPdf.save();
-                createDownloadLink(bytes, 'split.pdf', 'application/pdf');
+                hideLoader();
+                await showPDFOutputPreview(bytes, 'split.pdf');
             }
         },
 
@@ -314,7 +316,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     newDoc.addPage([cv.width, cv.height]).drawImage(img, { x: 0, y: 0, width: cv.width, height: cv.height });
                 }
                 const bytes = await newDoc.save();
-                createDownloadLink(bytes, 'compressed.pdf', 'application/pdf');
+                hideLoader();
+                await showPDFOutputPreview(bytes, 'compressed.pdf');
             }
         },
 
@@ -341,7 +344,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const bytes = await selectedFiles[0].arrayBuffer();
                 const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
                 doc.getPages().forEach(p => p.setRotation(degrees((p.getRotation().angle + angle) % 360)));
-                createDownloadLink(await doc.save(), 'rotated.pdf', 'application/pdf');
+                const out = await doc.save();
+                hideLoader();
+                await showPDFOutputPreview(out, 'rotated.pdf');
             }
         },
 
@@ -386,7 +391,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     let y = pos.includes('top') ? height - m - sz : m;
                     page.drawText(text, { x, y, size: sz, font, color: rgb(0, 0, 0) });
                 });
-                createDownloadLink(await doc.save(), 'numbered.pdf', 'application/pdf');
+                const out = await doc.save();
+                hideLoader();
+                await showPDFOutputPreview(out, 'numbered.pdf');
             }
         },
 
@@ -432,7 +439,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         opacity, rotate: degrees(45)
                     });
                 });
-                createDownloadLink(await doc.save(), 'watermarked.pdf', 'application/pdf');
+                const out = await doc.save();
+                hideLoader();
+                await showPDFOutputPreview(out, 'watermarked.pdf');
             }
         },
 
@@ -450,7 +459,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const img = await doc.embedJpg(await f.arrayBuffer());
                     doc.addPage([img.width, img.height]).drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
                 }
-                createDownloadLink(await doc.save(), 'converted.pdf', 'application/pdf');
+                const bytes = await doc.save();
+                hideLoader();
+                await showPDFOutputPreview(bytes, 'converted.pdf');
             }
         },
 
@@ -468,7 +479,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const img = await doc.embedPng(await f.arrayBuffer());
                     doc.addPage([img.width, img.height]).drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
                 }
-                createDownloadLink(await doc.save(), 'converted.pdf', 'application/pdf');
+                const bytes = await doc.save();
+                hideLoader();
+                await showPDFOutputPreview(bytes, 'converted.pdf');
             }
         },
 
@@ -560,7 +573,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                         pagebreak: { mode: ['css', 'legacy'] }
                     }).output('blob');
-                    createDownloadLink(blob, 'converted.pdf', 'application/pdf');
+                    hideLoader();
+                    await showPDFOutputPreview(blob, 'converted.pdf');
                 } finally {
                     document.body.removeChild(el);
                 }
@@ -594,7 +608,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
                         pagebreak: { mode: ['css', 'legacy'] }
                     }).output('blob');
-                    createDownloadLink(blob, 'from_excel.pdf', 'application/pdf');
+                    hideLoader();
+                    await showPDFOutputPreview(blob, 'from_excel.pdf');
                 } finally {
                     document.body.removeChild(el);
                 }
@@ -805,14 +820,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── PDF PREVIEW ENGINE ────────────────────────────────────────────────
-    async function initPDFPreview(file) {
+    async function loadPDFIntoPreview(arrayBuffer, label) {
         const panel = document.getElementById('pdf-preview-panel');
         panel.style.display = 'block';
         document.getElementById('preview-loading').style.display = 'flex';
         document.getElementById('pdf-preview-canvas').style.display = 'none';
         document.getElementById('preview-thumb-strip').innerHTML = '';
+        document.getElementById('preview-panel-label').textContent = label;
 
-        const arrayBuffer = await file.arrayBuffer();
         previewPDFDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const total = previewPDFDoc.numPages;
 
@@ -824,6 +839,48 @@ document.addEventListener('DOMContentLoaded', () => {
         previewCurrentPage = 1;
         await renderPreviewPage(1);
         await buildThumbStrip(total);
+    }
+
+    async function initPDFPreview(file) {
+        await loadPDFIntoPreview(await file.arrayBuffer(), 'Input preview');
+    }
+
+    function clearOutputPreviewActions() {
+        document.querySelectorAll('.output-preview-actions').forEach(n => n.remove());
+    }
+
+    // Switch the preview panel from the input PDF to the produced output PDF,
+    // then render a Download button directly below the panel. Use whenever a
+    // tool produces a PDF so the user can flip through pages and verify before
+    // saving — and the Download CTA is right there, not buried below the
+    // unchanged tool-options block.
+    async function showPDFOutputPreview(data, filename) {
+        const blob = data instanceof Blob ? data : new Blob([data], { type: 'application/pdf' });
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+
+        document.getElementById('output-area').innerHTML = '';
+        clearOutputPreviewActions();
+
+        try {
+            // pdf.js takes ownership of the buffer it's given (it may detach it),
+            // so pass a fresh copy and keep the Blob intact for the download link.
+            await loadPDFIntoPreview(bytes.slice().buffer, 'Output preview');
+        } catch (err) {
+            console.warn('Output preview render failed; download link still shown:', err);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'output-preview-actions';
+        const link = document.createElement('a');
+        link.className = 'dl-btn';
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        link.textContent = `⬇ Download ${filename}`;
+        actions.appendChild(link);
+
+        const panel = document.getElementById('pdf-preview-panel');
+        panel.insertAdjacentElement('afterend', actions);
+        actions.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     async function renderPreviewPage(pageNum) {
@@ -1020,6 +1077,7 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedFiles = []; updateFileList();
         document.getElementById('tool-options').innerHTML = '';
         document.getElementById('output-area').innerHTML = '';
+        clearOutputPreviewActions();
         document.getElementById('process-btn').disabled = true;
         fileInput.value = '';
         currentToolId = null;
@@ -1036,6 +1094,8 @@ document.addEventListener('DOMContentLoaded', () => {
             fileInput.value = '';
             return;
         }
+        clearOutputPreviewActions();
+        document.getElementById('output-area').innerHTML = '';
         if (tool.fileType) {
             const allowed = tool.fileType.split(',').map(e => e.trim().toLowerCase());
             const valid = arr.filter(f => allowed.includes('.' + f.name.split('.').pop().toLowerCase()));
@@ -1062,23 +1122,67 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateFileList() {
         const el = document.getElementById('file-list');
         el.innerHTML = '';
+        const tool = toolImplementations[currentToolId];
+        const reorderable = !!(tool && tool.multiple && selectedFiles.length > 1);
+
         selectedFiles.forEach((f, i) => {
             const item = document.createElement('div');
             item.className = 'file-item';
+
+            if (reorderable) {
+                const ord = document.createElement('span');
+                ord.className = 'file-item-ord';
+                ord.textContent = i + 1;
+                item.appendChild(ord);
+            }
+
             const name = document.createElement('span');
             name.className = 'file-item-name';
             name.textContent = `File: ${f.name}`;
+            item.appendChild(name);
+
+            if (reorderable) {
+                const up = document.createElement('button');
+                up.className = 'file-reorder-btn';
+                up.dataset.action = 'up';
+                up.dataset.i = i;
+                up.disabled = i === 0;
+                up.title = 'Move up';
+                up.textContent = '↑';
+
+                const down = document.createElement('button');
+                down.className = 'file-reorder-btn';
+                down.dataset.action = 'down';
+                down.dataset.i = i;
+                down.disabled = i === selectedFiles.length - 1;
+                down.title = 'Move down';
+                down.textContent = '↓';
+
+                item.append(up, down);
+            }
+
             const remove = document.createElement('button');
             remove.className = 'remove-file-btn';
             remove.dataset.i = i;
             remove.textContent = 'Remove';
-            item.append(name, remove);
+            item.appendChild(remove);
+
             el.appendChild(item);
         });
+
         el.querySelectorAll('.remove-file-btn').forEach(btn => btn.addEventListener('click', e => {
             selectedFiles.splice(parseInt(e.target.dataset.i), 1);
             updateFileList();
             if (!selectedFiles.length) document.getElementById('process-btn').disabled = true;
+        }));
+
+        el.querySelectorAll('.file-reorder-btn').forEach(btn => btn.addEventListener('click', e => {
+            const i = parseInt(e.currentTarget.dataset.i);
+            const dir = e.currentTarget.dataset.action === 'up' ? -1 : 1;
+            const j = i + dir;
+            if (j < 0 || j >= selectedFiles.length) return;
+            [selectedFiles[i], selectedFiles[j]] = [selectedFiles[j], selectedFiles[i]];
+            updateFileList();
         }));
     }
 
