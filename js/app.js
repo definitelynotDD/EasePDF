@@ -13,6 +13,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // the server and falls back to in-browser Tesseract.js if it's unreachable.
     const OCR_BACKEND_URL = 'https://easepdf-ocr.onrender.com';
 
+    const PAGE_NUM_STYLES = {
+        'page-of':     'Page {page} of {total}',
+        'of':          '{page} of {total}',
+        'slash':       '{page} / {total}',
+        'page-only':   'Page {page}',
+        'number-only': '{page}',
+        'dashes':      '— {page} —'
+    };
+
     // ── PDF PREVIEW STATE ─────────────────────────────────────────────────
     let previewPDFDoc = null;
     let previewCurrentPage = 1;
@@ -359,23 +368,49 @@ document.addEventListener('DOMContentLoaded', () => {
             multiple: false,
             options: () => `
                 <div class="option-group">
-                    <label for="page-num-position">Position</label>
-                    <select id="page-num-position">
-                        <option value="bottom-center">Bottom Center</option>
-                        <option value="bottom-left">Bottom Left</option>
-                        <option value="bottom-right">Bottom Right</option>
-                        <option value="top-center">Top Center</option>
-                        <option value="top-left">Top Left</option>
-                        <option value="top-right">Top Right</option>
+                    <label for="page-num-style">Number style</label>
+                    <select id="page-num-style">
+                        <option value="page-of">Page 1 of 10</option>
+                        <option value="of">1 of 10</option>
+                        <option value="slash">1 / 10</option>
+                        <option value="page-only">Page 1</option>
+                        <option value="number-only">1</option>
+                        <option value="dashes">— 1 —</option>
                     </select>
                 </div>
                 <div class="option-group">
-                    <label for="page-num-format">Format ({page} and {total})</label>
-                    <input type="text" id="page-num-format" value="Page {page} of {total}">
+                    <label for="page-num-position">Position on page</label>
+                    <select id="page-num-position">
+                        <option value="bottom-center">Bottom center</option>
+                        <option value="bottom-left">Bottom left</option>
+                        <option value="bottom-right">Bottom right</option>
+                        <option value="top-center">Top center</option>
+                        <option value="top-left">Top left</option>
+                        <option value="top-right">Top right</option>
+                    </select>
                 </div>
+                <p id="page-num-example" style="font-size:.82rem;color:var(--muted);margin-top:-4px"></p>
             `,
+            init: (optEl) => {
+                const styleSel = optEl.querySelector('#page-num-style');
+                const example = optEl.querySelector('#page-num-example');
+                const render = () => {
+                    if (!document.body.contains(example)) {
+                        document.removeEventListener('input-pdf-loaded', render);
+                        return;
+                    }
+                    const total = (previewPDFDoc && previewPDFDoc.numPages) || 10;
+                    const fmt = PAGE_NUM_STYLES[styleSel.value];
+                    const shown = fmt.replace('{page}', '1').replace('{total}', total);
+                    example.textContent = `Example: “${shown}” on every page`;
+                };
+                styleSel.addEventListener('change', render);
+                document.addEventListener('input-pdf-loaded', render);
+                render();
+            },
             process: async (options) => {
                 showLoader('Adding page numbers to PDF…');
+                const format = PAGE_NUM_STYLES[options['page-num-style']] || PAGE_NUM_STYLES['page-of'];
                 const bytes = await selectedFiles[0].arrayBuffer();
                 const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
                 const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -383,7 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const total = pages.length;
                 pages.forEach((page, i) => {
                     const { width, height } = page.getSize();
-                    const text = options['page-num-format'].replace('{page}', i + 1).replace('{total}', total);
+                    const text = format.replace('{page}', i + 1).replace('{total}', total);
                     const sz = 12, tw = font.widthOfTextAtSize(text, sz);
                     const pos = options['page-num-position'];
                     const m = 30;
@@ -843,6 +878,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function initPDFPreview(file) {
         await loadPDFIntoPreview(await file.arrayBuffer(), 'Input preview');
+        document.dispatchEvent(new CustomEvent('input-pdf-loaded'));
     }
 
     function clearOutputPreviewActions() {
@@ -1067,6 +1103,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const valSpan = document.getElementById(slider.id + '-val');
                 if (valSpan) { valSpan.textContent = slider.value; slider.oninput = () => valSpan.textContent = slider.value; }
             });
+            if (tool.init) tool.init(optEl);
         }
         modal.style.display = 'block';
     }
