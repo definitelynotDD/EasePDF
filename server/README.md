@@ -24,6 +24,7 @@ unreachable.
 | `MAX_FILE_MB`    | `50`    | Upload size limit. |
 | `MAX_PAGES`      | `50`    | Max PDF pages OCR'd per request. |
 | `OCR_DPI`        | `300`   | Rasterisation DPI (higher = more accurate, slower). |
+| `RATE_LIMIT_MAX` | `20`    | Max OCR requests per minute per IP (returns 429 beyond this). |
 
 ## Run locally
 
@@ -56,14 +57,8 @@ docker run -p 10000:10000 easepdf-ocr
    - In `js/app.js`, set `OCR_BACKEND_URL` to that URL.
    - In `vercel.json`, add that URL to the CSP `connect-src` directive.
    - Redeploy the frontend.
-5. Keep it warm: set a repo variable `OCR_BACKEND_URL` (Settings → Secrets and
-   variables → Actions → Variables) so `.github/workflows/keep-alive.yml` pings
-   `/health` every 10 minutes. (Or use an external pinger like UptimeRobot /
-   cron-job.org.)
-
-> **Free-tier note:** the instance still cold-starts once after each deploy,
-> and the keep-alive ping consumes free instance hours (~720/month for one
-> always-on service, under the 750 free hours).
+5. Keep it warm: point an external pinger at `GET /health` every 5 minutes
+   (this project uses cron-job.org; UptimeRobot works too).
 
 ## Languages
 

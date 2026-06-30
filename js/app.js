@@ -436,35 +436,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        'protect-pdf': {
-            title: 'Protect PDF',
-            desc: 'Password-encrypt your PDF file.',
-            icon: '🔒',
-            category: 'Security',
-            fileType: '.pdf',
-            multiple: false,
-            options: () => `
-                <div class="option-group">
-                    <label for="user-password">Open password</label>
-                    <input type="password" id="user-password" placeholder="Leave blank if not needed">
-                </div>
-                <div class="option-group">
-                    <label for="owner-password">Owner (permissions) password *</label>
-                    <input type="password" id="owner-password" placeholder="Required">
-                </div>
-            `,
-            process: async (options) => {
-                showLoader('Protecting PDF…');
-                if (!options['owner-password']) throw new Error('Owner password is required.');
-                const bytes = await selectedFiles[0].arrayBuffer();
-                const doc = await PDFDocument.load(bytes);
-                createDownloadLink(
-                    await doc.save({ userPassword: options['user-password'], ownerPassword: options['owner-password'] }),
-                    'protected.pdf', 'application/pdf'
-                );
-            }
-        },
-
         'jpg-to-pdf': {
             title: 'JPG to PDF',
             desc: 'Convert one or more JPG images to PDF.',
@@ -563,12 +534,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 showLoader('Converting Word document to PDF…');
                 const result = await mammoth.convertToHtml({ arrayBuffer: await selectedFiles[0].arrayBuffer() });
                 const el = document.createElement('div');
-                el.innerHTML = sanitizeHtml(result.value);
-                const blob = await html2pdf().from(el).set({
-                    margin: [15, 15, 15, 15], filename: 'converted.pdf',
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                }).output('blob');
-                createDownloadLink(blob, 'converted.pdf', 'application/pdf');
+                el.style.cssText = 'position:fixed;left:-99999px;top:0;width:794px;padding:40px;background:#fff;color:#000;font-family:Calibri,Arial,sans-serif;font-size:14px;line-height:1.45';
+                const style = document.createElement('style');
+                style.textContent = `
+                    h1{font-size:26px;margin:0 0 12px;font-weight:700}
+                    h2{font-size:22px;margin:18px 0 10px;font-weight:700}
+                    h3{font-size:18px;margin:14px 0 8px;font-weight:700}
+                    h4{font-size:16px;margin:12px 0 6px;font-weight:700}
+                    p{margin:0 0 10px}
+                    table{border-collapse:collapse;width:100%;margin:10px 0}
+                    td,th{border:1px solid #999;padding:6px 8px;vertical-align:top}
+                    th{background:#f2f2f2;font-weight:700}
+                    img{max-width:100%;height:auto}
+                    ul,ol{margin:0 0 10px 24px;padding:0}
+                `;
+                el.appendChild(style);
+                const body = document.createElement('div');
+                body.innerHTML = sanitizeHtml(result.value || '<p>(empty document)</p>');
+                el.appendChild(body);
+                document.body.appendChild(el);
+                try {
+                    const blob = await html2pdf().from(el).set({
+                        margin: [10, 10, 10, 10],
+                        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                        pagebreak: { mode: ['css', 'legacy'] }
+                    }).output('blob');
+                    createDownloadLink(blob, 'converted.pdf', 'application/pdf');
+                } finally {
+                    document.body.removeChild(el);
+                }
             }
         },
 
@@ -584,16 +579,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 const wb = XLSX.read(await selectedFiles[0].arrayBuffer(), { type: 'buffer' });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const el = document.createElement('div');
-                el.innerHTML = sanitizeHtml(XLSX.utils.sheet_to_html(ws));
+                el.style.cssText = 'position:fixed;left:-99999px;top:0;width:1100px;padding:20px;background:#fff;color:#000';
                 const style = document.createElement('style');
                 style.textContent = `table{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:10px}th,td{border:1px solid #ddd;text-align:left;padding:4px}th{background:#f2f2f2;font-weight:bold}`;
-                el.prepend(style);
-                const blob = await html2pdf().from(el).set({
-                    margin: 10, filename: 'from_excel.pdf',
-                    html2canvas: { scale: 2 },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-                }).output('blob');
-                createDownloadLink(blob, 'from_excel.pdf', 'application/pdf');
+                el.appendChild(style);
+                const body = document.createElement('div');
+                body.innerHTML = sanitizeHtml(XLSX.utils.sheet_to_html(ws));
+                el.appendChild(body);
+                document.body.appendChild(el);
+                try {
+                    const blob = await html2pdf().from(el).set({
+                        margin: 10,
+                        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+                        pagebreak: { mode: ['css', 'legacy'] }
+                    }).output('blob');
+                    createDownloadLink(blob, 'from_excel.pdf', 'application/pdf');
+                } finally {
+                    document.body.removeChild(el);
+                }
             }
         },
     };

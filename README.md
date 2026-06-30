@@ -37,7 +37,7 @@
 
 ## 🔭 Overview
 
-**easePDF Toolkit** is a zero-backend-by-default web app offering **15 PDF tools** — merge, split, compress, convert, watermark, extract tables to Excel, OCR, and more. The core design principle: **your files never leave your device.** All standard tools run 100% client-side using WebAssembly and JS libraries; nothing is uploaded to a server.
+**easePDF Toolkit** is a zero-backend-by-default web app offering **14 PDF tools** — merge, split, compress, convert, watermark, extract tables to Excel, OCR, and more. The core design principle: **your files never leave your device.** All standard tools run 100% client-side using WebAssembly and JS libraries; nothing is uploaded to a server.
 
 The one exception is **OCR**, which offers a **hybrid architecture**: it prefers a self-hosted native [Tesseract](https://github.com/tesseract-ocr/tesseract) backend for maximum accuracy, but **automatically falls back** to an in-browser WebAssembly engine if the server is unavailable — so the app degrades gracefully and never breaks.
 
@@ -51,7 +51,6 @@ The one exception is **OCR**, which offers a **hybrid architecture**: it prefers
 |---|---|
 | 📦 **Organize** | Merge PDF · Split PDF · Rotate PDF |
 | ✏️ **Edit** | Add Page Numbers · Watermark PDF |
-| 🔒 **Security** | Protect PDF (password encryption) |
 | 🔄 **Convert** | JPG→PDF · PNG→PDF · PDF→JPG · PDF→Word · Word→PDF · Excel→PDF |
 | 📊 **Extract** | **PDF Tables → Excel** ⭐ · **OCR PDF** (scanned → text) ⭐ |
 | ⚙️ **Optimize** | Compress PDF |
@@ -141,7 +140,7 @@ flowchart LR
 EasePDF/
 ├── index.html                  # Frontend entry — markup + CDN <script> tags
 ├── css/style.css               # All styling
-├── js/app.js                   # All app logic: 15 tools, PDF preview, OCR (backend + WASM fallback)
+├── js/app.js                   # All app logic: 14 tools, PDF preview, OCR (backend + WASM fallback)
 ├── vercel.json                 # Vercel config + hardened Content-Security-Policy
 │
 ├── server/                     # Native Tesseract OCR backend (deploys to Render)
