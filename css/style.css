@@ -537,9 +537,11 @@ footer strong { color: rgba(255,255,255,.7); }
     .tools-grid { grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 12px; }
     .tool-card { padding: 18px 14px 16px; }
     .nav-links {
-        position: fixed; inset: 0; background: var(--surface);
+        position: fixed; top: 0; bottom: 0; width: 100%;
+        background: var(--surface);
         flex-direction: column; justify-content: center; align-items: center;
         gap: 32px; left: -100%; transition: left .3s;
+        z-index: 800;
     }
     .nav-links.active { left: 0; }
     .nav-links a { font-size: 1.4rem; }
