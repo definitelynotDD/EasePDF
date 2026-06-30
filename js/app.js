@@ -547,26 +547,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
         'pdf-to-word': {
             title: 'PDF to Word',
-            desc: 'Extract all text from a PDF into a DOCX.',
+            desc: 'Convert a PDF to an editable Word document with detected structure.',
             icon: '📝',
             category: 'Convert',
             fileType: '.pdf',
             multiple: false,
-            process: async () => {
-                showLoader('Extracting text from PDF…');
+            options: () => `
+                <div class="option-group">
+                    <label for="pdf-word-mode">Output style</label>
+                    <select id="pdf-word-mode">
+                        <option value="text">Editable text — detects paragraphs, headings, bold/italic (recommended)</option>
+                        <option value="image">Page images — embeds each page as picture (exact look, not editable)</option>
+                    </select>
+                </div>
+                <p style="font-size:.78rem;color:var(--muted);margin-top:-4px;line-height:1.5">
+                    ⓘ PDFs are layout containers, not structured documents, so a 100% exact rebuild
+                    isn't possible in editable mode — complex multi-column layouts and tables come
+                    out jumbled. For tabular data, use the <strong>PDF Tables → Excel</strong> tool
+                    instead. Use page-image mode when appearance matters more than editing.
+                </p>
+            `,
+            process: async (options) => {
+                const mode = options['pdf-word-mode'] || 'text';
+                showLoader('Loading PDF…');
                 const bytes = await selectedFiles[0].arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-                let allText = '';
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    showLoader(`Reading page ${i}/${pdf.numPages}…`);
-                    const pg = await pdf.getPage(i);
-                    const content = await pg.getTextContent();
-                    allText += content.items.map(it => it.str).join(' ') + '\n\n';
-                }
+
+                const children = mode === 'image'
+                    ? await buildImageBasedDocxChildren(pdf)
+                    : await buildStructuredDocxChildren(pdf);
+
                 showLoader('Building DOCX…');
-                const paragraphs = allText.split('\n').map(t => new docx.Paragraph({ children: [new docx.TextRun(t)] }));
-                const d = new docx.Document({ sections: [{ children: paragraphs }] });
-                createDownloadLink(await docx.Packer.toBlob(d), 'extracted.docx',
+                const d = new docx.Document({ sections: [{ children }] });
+                const blob = await docx.Packer.toBlob(d);
+                hideLoader();
+                createDownloadLink(blob, 'extracted.docx',
                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
             }
         },
@@ -692,6 +707,156 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tableRows.length >= 2) tables.push(normalizeTable(tableRows));
 
         return tables;
+    }
+
+    // ── PDF → DOCX STRUCTURE DETECTION ───────────────────────────────────
+    // Turn a PDF page's positioned text fragments into real lines and
+    // paragraphs by clustering on Y coordinate and vertical gap. Detects
+    // bold/italic from font names and headings from font-size jumps off
+    // the document's baseline. This is heuristic — complex layouts (multi-
+    // column, tables, footnotes) won't survive — but it's much closer than
+    // joining every fragment with a space.
+    function groupItemsIntoLines(items) {
+        const lines = [];
+        const sorted = [...items]
+            .filter(it => (it.str || '').length > 0)
+            .sort((a, b) => b.transform[5] - a.transform[5] || a.transform[4] - b.transform[4]);
+
+        for (const item of sorted) {
+            const y = item.transform[5];
+            const x = item.transform[4];
+            const fontSize = Math.abs(item.transform[3]) || item.height || 12;
+            const tol = Math.max(2, fontSize * 0.3);
+            let line = lines[lines.length - 1];
+            if (!line || Math.abs(line.y - y) > tol) {
+                line = { y, items: [], maxSize: 0 };
+                lines.push(line);
+            }
+            line.items.push({ text: item.str, x, fontName: item.fontName || '', fontSize });
+            line.maxSize = Math.max(line.maxSize, fontSize);
+        }
+
+        return lines.map(line => {
+            line.items.sort((a, b) => a.x - b.x);
+            const text = line.items.map(it => it.text).join('').replace(/\s+/g, ' ').trim();
+            return {
+                y: line.y,
+                text,
+                fontSize: line.maxSize,
+                fontName: line.items[0] ? line.items[0].fontName : ''
+            };
+        }).filter(l => l.text.length > 0);
+    }
+
+    function detectBaseFontSize(lines) {
+        if (!lines.length) return 12;
+        const freq = new Map();
+        for (const l of lines) {
+            const k = Math.round(l.fontSize);
+            freq.set(k, (freq.get(k) || 0) + l.text.length);
+        }
+        return [...freq.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    }
+
+    function groupLinesIntoParagraphs(lines) {
+        if (!lines.length) return [];
+        const paragraphs = [{ lines: [lines[0]] }];
+        for (let i = 1; i < lines.length; i++) {
+            const prev = lines[i - 1];
+            const curr = lines[i];
+            const gap = Math.abs(prev.y - curr.y);
+            const lineHeight = Math.max(prev.fontSize, curr.fontSize);
+            const sizeShift = Math.abs(prev.fontSize - curr.fontSize) > prev.fontSize * 0.2;
+            if (gap > lineHeight * 1.6 || sizeShift) {
+                paragraphs.push({ lines: [curr] });
+            } else {
+                paragraphs[paragraphs.length - 1].lines.push(curr);
+            }
+        }
+        return paragraphs;
+    }
+
+    async function buildStructuredDocxChildren(pdf) {
+        const { Paragraph, TextRun, HeadingLevel, PageBreak } = docx;
+        const children = [];
+
+        // First pass: collect all lines across all pages to compute a global
+        // baseline font size — otherwise heading detection drifts page-by-page.
+        const perPageLines = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+            showLoader(`Reading page ${i}/${pdf.numPages}…`);
+            const pg = await pdf.getPage(i);
+            const content = await pg.getTextContent();
+            perPageLines.push(groupItemsIntoLines(content.items));
+        }
+        const baseSize = detectBaseFontSize(perPageLines.flat());
+
+        for (let i = 0; i < perPageLines.length; i++) {
+            const lines = perPageLines[i];
+            const paragraphs = groupLinesIntoParagraphs(lines);
+
+            for (const para of paragraphs) {
+                const text = para.lines.map(l => l.text).join(' ').replace(/\s+/g, ' ').trim();
+                if (!text) continue;
+                const size = para.lines[0].fontSize;
+                const font = para.lines[0].fontName;
+                const isBold = /bold|black|heavy/i.test(font);
+                const isItalic = /italic|oblique/i.test(font);
+
+                let heading;
+                if (size >= baseSize * 1.8) heading = HeadingLevel.HEADING_1;
+                else if (size >= baseSize * 1.4) heading = HeadingLevel.HEADING_2;
+                else if (size >= baseSize * 1.2) heading = HeadingLevel.HEADING_3;
+
+                // half-points; cap at sensible bounds
+                const sizeHP = Math.max(12, Math.min(144, Math.round(size * 2)));
+
+                children.push(new Paragraph({
+                    heading,
+                    children: [new TextRun({
+                        text,
+                        bold: isBold || !!heading,
+                        italics: isItalic,
+                        size: sizeHP
+                    })],
+                    spacing: { after: 120 }
+                }));
+            }
+
+            if (i < perPageLines.length - 1) {
+                children.push(new Paragraph({ children: [new PageBreak()] }));
+            }
+        }
+        return children;
+    }
+
+    async function buildImageBasedDocxChildren(pdf) {
+        const { Paragraph, ImageRun, PageBreak } = docx;
+        const children = [];
+        const maxWidthPx = 600;
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+            showLoader(`Rendering page ${i}/${pdf.numPages}…`);
+            const pg = await pdf.getPage(i);
+            const vp = pg.getViewport({ scale: 1.5 });
+            const cv = document.createElement('canvas');
+            cv.width = vp.width; cv.height = vp.height;
+            await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+            const dataUrl = cv.toDataURL('image/jpeg', 0.78);
+            const imgBytes = dataUrlToBytes(dataUrl);
+            const ratio = vp.height / vp.width;
+
+            children.push(new Paragraph({
+                children: [new ImageRun({
+                    data: imgBytes,
+                    transformation: { width: maxWidthPx, height: Math.round(maxWidthPx * ratio) }
+                })]
+            }));
+            if (i < pdf.numPages) {
+                children.push(new Paragraph({ children: [new PageBreak()] }));
+            }
+        }
+        return children;
     }
 
     function normalizeTable(rows) {
