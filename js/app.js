@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (allTables.length === 0 && totalItems === 0) {
                     showToast('No selectable text — running OCR, then retrying table detection');
                     try {
-                        const ocrContents = await ocrPagesToPositionedItems(pdf, ocrLang);
+                        const ocrContents = await ocrPagesToPositionedItems(selectedFiles[0], pdf, ocrLang);
                         for (let p = 0; p < ocrContents.length; p++) {
                             const tables = extractTablesFromTextContent(ocrContents[p], sensitivity);
                             tables.forEach((t, i) => allTables.push({ pageNum: p + 1, tableIndex: i + 1, rows: t }));
@@ -925,13 +925,38 @@ document.addEventListener('DOMContentLoaded', () => {
         return children;
     }
 
-    // Rasterize each PDF page, OCR it with in-browser Tesseract.js, and
-    // reshape the resulting word bboxes into pdf.js-style textContent items
-    // (each item has a transform matrix where [4]=x, [5]=y) so the existing
-    // table detector can chew on them without knowing OCR is involved.
-    // Y is flipped from pixel space (top=0) into a "higher = further up"
-    // convention so it sorts the same way as native PDF text items.
-    async function ocrPagesToPositionedItems(pdf, lang) {
+    // Returns per-page pseudo-textContent objects with items shaped like
+    // pdf.js's own (each has a transform matrix where [4]=x, [5]=y) so the
+    // existing table detector runs unchanged. Y is flipped from image-pixel
+    // space (top=0) into "higher = further up on page" so items sort the
+    // same way as native PDF text.
+    //
+    // Prefers the backend (native Tesseract on Render, higher accuracy) and
+    // falls back to in-browser Tesseract.js if the server is unreachable.
+    async function ocrPagesToPositionedItems(file, pdf, lang) {
+        if (OCR_BACKEND_URL) {
+            try {
+                showLoader('Sending to OCR server (native Tesseract with positions)…');
+                const pages = await ocrWordsViaBackend(file, lang);
+                return pages.map(page => {
+                    const pageH = page.height || 0;
+                    const items = (page.words || []).map(w => {
+                        const h = w.h || 12;
+                        return {
+                            str: w.str,
+                            width: w.w,
+                            height: h,
+                            transform: [1, 0, 0, h, w.x, pageH - w.y]
+                        };
+                    });
+                    return { items };
+                });
+            } catch (err) {
+                console.warn('Backend positional OCR failed — falling back to in-browser:', err);
+                showToast('⚠️ OCR server unavailable — using in-browser OCR (slower, less accurate)');
+            }
+        }
+
         if (typeof Tesseract === 'undefined') {
             throw new Error('Tesseract.js not loaded (blocked by CSP?)');
         }
@@ -1130,6 +1155,24 @@ document.addEventListener('DOMContentLoaded', () => {
             return data.pages.map(t => (t || '').trim());
         }
         return [String(data.text || '').trim()];
+    }
+
+    // Positional OCR via the backend — returns per-page word bboxes from
+    // Tesseract's TSV output. Way more accurate than in-browser Tesseract.js.
+    async function ocrWordsViaBackend(file, lang) {
+        const base = OCR_BACKEND_URL.replace(/\/+$/, '');
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('lang', lang);
+        fd.append('format', 'words');
+        const res = await fetch(base + '/ocr', { method: 'POST', body: fd });
+        if (!res.ok) {
+            let msg = `OCR server responded ${res.status}`;
+            try { const j = await res.json(); if (j && j.error) msg = j.error; } catch { /* ignore */ }
+            throw new Error(msg);
+        }
+        const data = await res.json();
+        return Array.isArray(data.pages) ? data.pages : [];
     }
 
     // ── PDF→DOCX BACKEND (layout-aware pdf2docx) ──────────────────────────

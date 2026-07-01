@@ -11,8 +11,16 @@
 //
 // Endpoints:
 //   GET  /health        → "ok"          (used by the keep-alive cron)
-//   POST /ocr           → multipart      field "file", optional "lang"
-//                         returns { engine, lang, pages: [...], text }
+//   POST /ocr           → multipart      field "file", optional "lang",
+//                                         optional "format" ("text" default,
+//                                         or "words" for positional TSV data
+//                                         with per-word bboxes).
+//                         text  format → { engine, lang, pages: [...], text }
+//                         words format → { engine, lang, format, pages: [
+//                                          { width, height, words: [
+//                                            { str, x, y, w, h }
+//                                          ] }
+//                                        ] }
 //   POST /pdf-to-docx   → multipart      field "file"
 //                         returns the converted .docx as a binary stream
 
@@ -90,12 +98,18 @@ app.post('/ocr', ocrLimiter, upload.single('file'), async (req, res) => {
   const langs = requested.filter(l => SUPPORTED_LANGS.has(l));
   const lang = (langs.length ? langs : ['eng']).join('+');
 
+  const format = String(req.body.format || 'text').toLowerCase();
+  if (format !== 'text' && format !== 'words') {
+    return res.status(400).json({ error: 'Unknown format — use "text" (default) or "words".' });
+  }
+
   const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ocr-'));
   try {
     const ext = (path.extname(req.file.originalname) || '').toLowerCase();
     const isPdf = ext === '.pdf' || req.file.mimetype === 'application/pdf';
-    const pageTexts = [];
 
+    // Collect the list of image files to OCR (one for images, N for PDFs).
+    let imagePaths;
     if (isPdf) {
       const pdfPath = path.join(workDir, 'input.pdf');
       await fs.writeFile(pdfPath, req.file.buffer);
@@ -110,17 +124,22 @@ app.post('/ocr', ocrLimiter, upload.single('file'), async (req, res) => {
 
       if (files.length === 0) throw new Error('Could not rasterise any PDF pages.');
       if (files.length > MAX_PAGES) files = files.slice(0, MAX_PAGES);
-
-      for (const f of files) {
-        pageTexts.push((await runTesseract(path.join(workDir, f), lang)).trim());
-      }
+      imagePaths = files.map(f => path.join(workDir, f));
     } else {
       const imgPath = path.join(workDir, 'input' + (ext || '.png'));
       await fs.writeFile(imgPath, req.file.buffer);
-      pageTexts.push((await runTesseract(imgPath, lang)).trim());
+      imagePaths = [imgPath];
     }
 
-    res.json({ engine: 'tesseract-native', lang, pages: pageTexts, text: pageTexts.join('\n\n') });
+    if (format === 'words') {
+      const pages = [];
+      for (const p of imagePaths) pages.push(await runTesseractTsv(p, lang));
+      res.json({ engine: 'tesseract-native', lang, format, pages });
+    } else {
+      const pageTexts = [];
+      for (const p of imagePaths) pageTexts.push((await runTesseract(p, lang)).trim());
+      res.json({ engine: 'tesseract-native', lang, pages: pageTexts, text: pageTexts.join('\n\n') });
+    }
   } catch (err) {
     console.error('[ocr] failed:', err); // full detail in server logs only
     res.status(500).json({ error: 'OCR processing failed. Please try a different file or try again later.' });
@@ -203,6 +222,43 @@ function pageNum(filename) {
 async function runTesseract(imgPath, lang) {
   const { stdout } = await execFileAsync('tesseract', [imgPath, 'stdout', '-l', lang], { maxBuffer: EXEC_BUFFER });
   return stdout || '';
+}
+
+// TSV output for positional data. Columns (tab-separated, one header row):
+//   level, page_num, block_num, par_num, line_num, word_num,
+//   left, top, width, height, conf, text
+// level 1 = page (has full width/height), level 5 = individual word.
+async function runTesseractTsv(imgPath, lang) {
+  const { stdout } = await execFileAsync(
+    'tesseract', [imgPath, 'stdout', '-l', lang, 'tsv'],
+    { maxBuffer: EXEC_BUFFER }
+  );
+  const lines = (stdout || '').split('\n');
+  let width = 0, height = 0;
+  const words = [];
+  // skip header
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split('\t');
+    if (cols.length < 12) continue;
+    const level = cols[0];
+    if (level === '1') {
+      width = parseInt(cols[8], 10) || width;
+      height = parseInt(cols[9], 10) || height;
+    } else if (level === '5') {
+      const conf = parseFloat(cols[10]);
+      const text = cols[11];
+      if (conf > 0 && text && text.trim()) {
+        words.push({
+          str: text,
+          x: parseInt(cols[6], 10),
+          y: parseInt(cols[7], 10),
+          w: parseInt(cols[8], 10),
+          h: parseInt(cols[9], 10)
+        });
+      }
+    }
+  }
+  return { width, height, words };
 }
 
 app.listen(PORT, () => console.log(`easePDF OCR backend listening on :${PORT}`));

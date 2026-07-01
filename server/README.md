@@ -19,7 +19,7 @@ and automatically falls back to in-browser engines if the server is unreachable
 | Method | Path            | Description |
 |--------|-----------------|-------------|
 | `GET`  | `/health`       | Returns `ok` (used by the keep-alive cron). |
-| `POST` | `/ocr`          | Multipart form: `file` (PDF/JPG/PNG), optional `lang` (e.g. `eng`, `eng+deu`). Returns `{ engine, lang, pages: [...], text }`. |
+| `POST` | `/ocr`          | Multipart form: `file` (PDF/JPG/PNG), optional `lang` (e.g. `eng`, `eng+deu`), optional `format` (`text` default, or `words` for positional data). Text response: `{ engine, lang, pages: [...text], text }`. Words response: `{ engine, lang, format, pages: [{ width, height, words: [{ str, x, y, w, h }] }] }` — used by the tables extractor for OCR-based table detection on scanned PDFs. |
 | `POST` | `/pdf-to-docx`  | Multipart form: `file` (PDF). Returns the converted `.docx` as a binary stream with `Content-Disposition: attachment`. |
 
 ## Environment variables
