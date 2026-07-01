@@ -39,7 +39,7 @@
 
 **easePDF Toolkit** is a zero-backend-by-default web app offering **14 PDF tools** — merge, split, compress, convert, watermark, extract tables to Excel, OCR, and more. The core design principle: **your files never leave your device.** All standard tools run 100% client-side using WebAssembly and JS libraries; nothing is uploaded to a server.
 
-Two tools use an optional **hybrid architecture** for higher fidelity: **OCR** prefers a self-hosted native [Tesseract](https://github.com/tesseract-ocr/tesseract) backend, and **PDF → Word** prefers a self-hosted headless [LibreOffice](https://www.libreoffice.org/) converter (the open-source gold standard for exact PDF → DOCX). Both **automatically fall back** to an in-browser engine if the server is unavailable — so the app degrades gracefully and never breaks.
+Two tools use an optional **hybrid architecture** for higher fidelity: **OCR** prefers a self-hosted native [Tesseract](https://github.com/tesseract-ocr/tesseract) backend, and **PDF → Word** prefers a self-hosted [pdf2docx](https://github.com/ArtifexSoftware/pdf2docx) converter (layout-aware conversion via PyMuPDF, produces real paragraphs and tables). Both **automatically fall back** to an in-browser engine if the server is unavailable — so the app degrades gracefully and never breaks.
 
 > **Why it's interesting (engineering-wise):** client-side document processing, a graceful-degradation hybrid OCR pipeline, a hardened Content-Security-Policy, a containerized microservice, and a free-tier keep-alive strategy — all in a dependency-light, build-step-free codebase.
 
@@ -82,7 +82,7 @@ PDFs aren't structured documents — they're page-layout containers — so *exac
 
 | Mode | Engine | Where it runs | Preserves |
 |---|---|---|---|
-| **Server** (default) | Native LibreOffice `--convert-to docx` | Render backend | Layout, fonts, tables, columns — near-exact |
+| **Server** (default) | pdf2docx (PyMuPDF-based layout analysis) | Render backend | Layout, fonts, tables, columns — near-exact editable output |
 | **In-browser text** | PDF.js + custom line/paragraph clustering | The browser | Paragraphs, headings, bold/italic |
 | **In-browser images** | PDF.js canvas + `ImageRun` in DOCX | The browser | Exact appearance (not editable as text) |
 
@@ -105,7 +105,7 @@ flowchart LR
     end
 
     subgraph R["Backend · Render (Docker)"]
-        BE["Express API<br/>tesseract + poppler + libreoffice"]
+        BE["Express API<br/>tesseract + poppler + pdf2docx"]
     end
 
     U --> FE
@@ -139,7 +139,7 @@ flowchart LR
 **Backend** (`server/`)
 - Node.js + [Express](https://expressjs.com/) · [Multer](https://github.com/expressjs/multer) · [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit)
 - Native [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) + [Poppler](https://poppler.freedesktop.org/) (`pdftoppm`)
-- Headless [LibreOffice](https://www.libreoffice.org/) (`--convert-to docx`)
+- Python + [pdf2docx](https://github.com/ArtifexSoftware/pdf2docx) (layout-aware PDF→DOCX)
 - Docker
 
 **Infrastructure**

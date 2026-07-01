@@ -1,9 +1,12 @@
-# easePDF backend: native Tesseract (OCR) + LibreOffice (PDF→DOCX) on Node.
+# easePDF backend: native Tesseract (OCR) + pdf2docx (PDF→DOCX) on Node.
 FROM node:20-slim
 
 # Tesseract + language packs (OCR) + poppler (PDF rasterisation for OCR) +
-# LibreOffice (PDF→DOCX conversion). Language packs here MUST match
-# SUPPORTED_LANGS in index.js and the language dropdown in the frontend.
+# Python (for pdf2docx). Language packs here MUST match SUPPORTED_LANGS in
+# index.js and the language dropdown in the frontend.
+#
+# libgl1 + libglib2.0-0 are runtime deps for opencv-python-headless which
+# pdf2docx pulls in for layout analysis.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         tesseract-ocr \
         tesseract-ocr-eng \
@@ -19,18 +22,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         tesseract-ocr-chi-sim \
         tesseract-ocr-jpn \
         poppler-utils \
-        libreoffice-core \
-        libreoffice-writer \
-        libreoffice-draw \
+        python3 \
+        python3-pip \
+        libgl1 \
+        libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Pre-warm the LibreOffice user profile at build time. Without this the first
-# /pdf-to-docx call after deploy spends ~20s creating ~/.config/libreoffice
-# before doing any actual conversion work.
-RUN mkdir -p /root/.config/libreoffice \
-    && printf 'warmup\n' > /tmp/warmup.txt \
-    && libreoffice --headless --convert-to docx --outdir /tmp /tmp/warmup.txt \
-    && rm -f /tmp/warmup.txt /tmp/warmup.docx
+# pdf2docx is the primary tool for near-exact PDF→DOCX conversion. It
+# does real layout analysis (text blocks, tables, columns) instead of
+# LibreOffice's PDF-import-via-positioned-frames approach, which produces
+# a DOCX that renders as overlapping text in Word.
+# --break-system-packages is required on Debian 12 (PEP 668) — this is
+# a container, not a shared system, so no risk to a system Python.
+RUN pip3 install --no-cache-dir --break-system-packages pdf2docx
 
 WORKDIR /app
 

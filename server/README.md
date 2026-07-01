@@ -1,12 +1,14 @@
-# easePDF backend (native Tesseract + LibreOffice)
+# easePDF backend (native Tesseract + pdf2docx)
 
 A small Express service that runs two native engines:
 
 - **Tesseract** — OCR for scanned PDFs and images (higher accuracy than the
   in-browser WASM build). PDFs are rasterised with poppler (`pdftoppm`) and
   OCR'd page-by-page; images are OCR'd directly.
-- **LibreOffice (headless)** — near-exact PDF → DOCX conversion, preserving
-  layout, fonts, tables, and columns better than any client-side heuristic.
+- **pdf2docx** — layout-aware PDF → DOCX conversion. Analyses text blocks,
+  tables, and columns and emits a real Word document. Much better editable
+  output than LibreOffice's PDF import (which reconstructs pages as
+  positioned frames that overlap when opened in Word).
 
 The frontend uses this backend when `OCR_BACKEND_URL` is set in `js/app.js`,
 and automatically falls back to in-browser engines if the server is unreachable
@@ -35,10 +37,11 @@ and automatically falls back to in-browser engines if the server is unreachable
 
 ## Run locally
 
-Requires `tesseract`, `poppler-utils`, and `libreoffice` on your machine
+Requires `tesseract`, `poppler-utils`, and `pdf2docx` (Python) on your machine
 (e.g. the [UB-Mannheim Tesseract](https://github.com/UB-Mannheim/tesseract)
-build + LibreOffice installer on Windows, or `brew install tesseract poppler libreoffice`
-/ `apt install tesseract-ocr poppler-utils libreoffice-core libreoffice-writer libreoffice-draw`).
+build on Windows + `pip install pdf2docx`, or `brew install tesseract poppler
+&& pip install pdf2docx` / `apt install tesseract-ocr poppler-utils python3-pip
+&& pip3 install pdf2docx`).
 
 ```bash
 cd server
@@ -77,14 +80,12 @@ To add more, install the matching `tesseract-ocr-<lang>` package in the
 
 ## Notes on PDF → DOCX
 
-- LibreOffice's headless converter is the open-source gold standard for
-  PDF → DOCX; it preserves layout, fonts, tables, and columns significantly
-  better than any heuristic client-side approach.
-- Each request runs LibreOffice with a per-request `UserInstallation`
-  profile so concurrent conversions don't block each other on lock files.
-- The Docker image pre-warms the default LibreOffice profile at build time
-  so the first `/pdf-to-docx` request after deploy isn't slowed by profile
-  bootstrap. First request after cold-start still takes ~15–25s (Render
-  spin-up + LibreOffice load); subsequent requests are ~3–8s per page.
-- Adding LibreOffice grows the Docker image by ~400 MB. This is a one-time
-  cost — Render caches the image between deploys.
+- `pdf2docx` is a Python library that runs full layout analysis on each
+  PDF page (text blocks, tables, columns, images) via PyMuPDF, then emits
+  a properly-structured DOCX with real paragraphs and tables.
+- Chosen over LibreOffice because LibreOffice's `writer_pdf_import` filter
+  reconstructs pages as absolutely-positioned text frames — visually exact
+  in Draw, but Word renders those frames overlapping and unreadable.
+- Typical conversion time: ~1–3s per page after cold start.
+- Adding Python + pdf2docx (with its opencv/PyMuPDF deps) grows the Docker
+  image by ~250 MB. One-time cost — Render caches the image between deploys.

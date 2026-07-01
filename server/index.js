@@ -3,7 +3,7 @@
 // ── easePDF backend ──────────────────────────────────────────────────────
 // A tiny Express service that runs two native engines:
 //   • Tesseract   — OCR for scanned PDFs and images (POST /ocr)
-//   • LibreOffice — exact PDF→DOCX conversion        (POST /pdf-to-docx)
+//   • pdf2docx    — layout-aware PDF→DOCX conversion (POST /pdf-to-docx)
 //
 // Both endpoints follow the same pattern: rate-limited multipart upload,
 // per-request tmp dir, generic error messages to clients (full detail in
@@ -129,8 +129,14 @@ app.post('/ocr', ocrLimiter, upload.single('file'), async (req, res) => {
   }
 });
 
-// POST /pdf-to-docx — exact PDF→DOCX conversion via headless LibreOffice.
+// POST /pdf-to-docx — layout-aware PDF→DOCX conversion via pdf2docx.
 // Returns the .docx binary directly (Content-Disposition: attachment).
+//
+// We use pdf2docx (Python) rather than LibreOffice because LibreOffice's
+// PDF-import filter reconstructs the page as absolutely-positioned text
+// frames — visually accurate in Draw, but exporting that to DOCX produces
+// stacks of overlapping frames in Word. pdf2docx does real layout analysis
+// (text blocks, tables, columns) and emits a proper Word document.
 app.post('/pdf-to-docx', convertLimiter, upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded — use multipart field name "file".' });
@@ -144,38 +150,22 @@ app.post('/pdf-to-docx', convertLimiter, upload.single('file'), async (req, res)
   const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdf2docx-'));
   try {
     const inputPath = path.join(workDir, 'input.pdf');
+    const outputPath = path.join(workDir, 'output.docx');
     await fs.writeFile(inputPath, req.file.buffer);
 
-    // Per-request UserInstallation profile prevents lock contention when two
-    // concurrent requests hit the shared default profile. Costs ~3-5s of
-    // first-time profile setup per call, but the build-time pre-warm copy
-    // already populated the registry templates so it's mostly directory I/O.
-    //
-    // --infilter="writer_pdf_import" is REQUIRED: without it LibreOffice
-    // opens PDFs in Draw (the default handler), Draw has no DOCX export
-    // filter, and the command exits 0 with no output file — so the readFile
-    // below fails with ENOENT. Forcing the Writer PDF-import filter routes
-    // the file through Writer, which does have the DOCX export filter.
-    const profileDir = path.join(workDir, 'lo-profile');
-    const { stdout: loStdout, stderr: loStderr } = await execFileAsync('libreoffice', [
-      `-env:UserInstallation=file://${profileDir}`,
-      '--headless',
-      '--infilter=writer_pdf_import',
-      '--convert-to', 'docx',
-      '--outdir', workDir,
-      inputPath
+    const { stdout, stderr } = await execFileAsync('pdf2docx', [
+      'convert', inputPath, outputPath
     ], { maxBuffer: EXEC_BUFFER, timeout: CONVERT_TIMEOUT_MS });
 
-    // LibreOffice names the output by stripping the input extension and
-    // appending .docx, so input.pdf → input.docx in the same outdir. LO can
-    // still exit 0 with no file for some malformed PDFs, so guard the read.
-    const outputPath = path.join(workDir, 'input.docx');
+    // pdf2docx normally raises on failure (non-zero exit), but guard the
+    // read anyway so any silent no-op surfaces a clean error rather than
+    // a bare ENOENT.
     let docxBytes;
     try {
       docxBytes = await fs.readFile(outputPath);
     } catch {
-      console.error('[pdf-to-docx] LibreOffice exited 0 but produced no output.',
-        '\n  stdout:', loStdout, '\n  stderr:', loStderr);
+      console.error('[pdf-to-docx] pdf2docx exited 0 but produced no output.',
+        '\n  stdout:', stdout, '\n  stderr:', stderr);
       throw new Error('Conversion produced no output file — the PDF may be encrypted, image-only, or use unsupported features.');
     }
 
