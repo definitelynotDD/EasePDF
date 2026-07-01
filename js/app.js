@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         'pdf-table-to-excel': {
             title: 'PDF Tables → Excel',
-            desc: 'Extract all tables from a PDF and export each as an Excel sheet.',
+            desc: 'Extract all tables from a PDF and export each as an Excel sheet. OCR fallback for scanned PDFs.',
             icon: '📊',
             category: 'Extract',
             fileType: '.pdf',
@@ -54,6 +54,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         Use first row as header
                     </label>
                 </div>
+                <div class="option-group">
+                    <label for="tbl-ocr-lang">Document language <span style="color:var(--muted);font-weight:400">(used only if the PDF is scanned)</span></label>
+                    <select id="tbl-ocr-lang">
+                        <option value="eng">English</option>
+                        <option value="spa">Spanish</option>
+                        <option value="fra">French</option>
+                        <option value="deu">German</option>
+                        <option value="ita">Italian</option>
+                        <option value="por">Portuguese</option>
+                        <option value="nld">Dutch</option>
+                        <option value="hin">Hindi</option>
+                        <option value="rus">Russian</option>
+                        <option value="ara">Arabic</option>
+                        <option value="chi_sim">Chinese (Simplified)</option>
+                        <option value="jpn">Japanese</option>
+                    </select>
+                </div>
             `,
             process: async (options) => {
                 showLoader('Loading PDF for table extraction…');
@@ -62,20 +79,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 const numPages = pdf.numPages;
                 const sensitivity = parseInt(options['tbl-sensitivity']) || 3;
                 const useHeader = options['tbl-header-row'] !== false && options['tbl-header-row'] !== 'false';
+                const ocrLang = options['tbl-ocr-lang'] || 'eng';
 
                 const allTables = [];
+                const perPageContent = [];
+                let totalItems = 0;
 
                 for (let p = 1; p <= numPages; p++) {
                     showLoader(`Scanning page ${p} of ${numPages}…`);
                     const page = await pdf.getPage(p);
                     const content = await page.getTextContent();
+                    perPageContent.push(content);
+                    totalItems += content.items.length;
                     const tables = extractTablesFromTextContent(content, sensitivity);
                     tables.forEach((t, i) => allTables.push({ pageNum: p, tableIndex: i + 1, rows: t }));
                 }
 
+                // OCR fallback: if pdf.js found no text at all, this is almost
+                // certainly a scanned PDF. Rasterize + OCR each page and rerun
+                // table detection on the OCR words (which have bboxes we can
+                // reshape into pdf.js-style positioned items).
+                if (allTables.length === 0 && totalItems === 0) {
+                    showToast('No selectable text — running OCR, then retrying table detection');
+                    try {
+                        const ocrContents = await ocrPagesToPositionedItems(pdf, ocrLang);
+                        for (let p = 0; p < ocrContents.length; p++) {
+                            const tables = extractTablesFromTextContent(ocrContents[p], sensitivity);
+                            tables.forEach((t, i) => allTables.push({ pageNum: p + 1, tableIndex: i + 1, rows: t }));
+                        }
+                    } catch (err) {
+                        console.warn('OCR fallback failed:', err);
+                        hideLoader();
+                        showOutputMessage('⚠️ This looks like a scanned PDF and the OCR fallback failed — check that Tesseract.js can load (cdn.jsdelivr.net must be allowed by CSP).');
+                        return;
+                    }
+                }
+
                 if (allTables.length === 0) {
                     hideLoader();
-                    showOutputMessage('⚠️ No tables detected in this PDF. Try increasing sensitivity or check that the PDF has selectable text.');
+                    showOutputMessage('⚠️ No tables detected in this PDF. Try increasing sensitivity, or the source may not contain grid-aligned tabular data.');
                     return;
                 }
 
@@ -881,6 +923,57 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         return children;
+    }
+
+    // Rasterize each PDF page, OCR it with in-browser Tesseract.js, and
+    // reshape the resulting word bboxes into pdf.js-style textContent items
+    // (each item has a transform matrix where [4]=x, [5]=y) so the existing
+    // table detector can chew on them without knowing OCR is involved.
+    // Y is flipped from pixel space (top=0) into a "higher = further up"
+    // convention so it sorts the same way as native PDF text items.
+    async function ocrPagesToPositionedItems(pdf, lang) {
+        if (typeof Tesseract === 'undefined') {
+            throw new Error('Tesseract.js not loaded (blocked by CSP?)');
+        }
+        showLoader('Loading OCR engine…');
+        const worker = await Tesseract.createWorker(lang, 1, {
+            logger: m => {
+                if (m.status === 'recognizing text') {
+                    showLoader(`OCR recognizing text… ${Math.round((m.progress || 0) * 100)}%`);
+                }
+            }
+        });
+        const perPage = [];
+        try {
+            for (let i = 1; i <= pdf.numPages; i++) {
+                showLoader(`OCR page ${i} of ${pdf.numPages}…`);
+                const pg = await pdf.getPage(i);
+                const vp = pg.getViewport({ scale: 2 });
+                const cv = document.createElement('canvas');
+                cv.width = vp.width; cv.height = vp.height;
+                await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+                const { data } = await worker.recognize(cv);
+                const words = data.words || [];
+                const items = words
+                    .filter(w => w.text && w.text.trim())
+                    .map(w => {
+                        const x = w.bbox.x0;
+                        const yFromTop = w.bbox.y0;
+                        const width = w.bbox.x1 - w.bbox.x0;
+                        const height = (w.bbox.y1 - w.bbox.y0) || 12;
+                        return {
+                            str: w.text,
+                            width,
+                            height,
+                            transform: [1, 0, 0, height, x, vp.height - yFromTop]
+                        };
+                    });
+                perPage.push({ items });
+            }
+        } finally {
+            await worker.terminate();
+        }
+        return perPage;
     }
 
     // Heuristic: sample the first few pages and decide the PDF is "scanned"

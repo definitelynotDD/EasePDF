@@ -63,7 +63,7 @@ Every standard tool runs **100% in the browser** — files never leave your devi
 
 ### 📊 PDF Tables → Excel
 
-Most PDF tools ignore tabular data. easePDF's extractor detects table structure from text-based PDFs — clustering text by Y-coordinate into rows and grouping by X-position into columns — and exports every detected table as its own sheet in a single `.xlsx`, with a tunable sensitivity slider and a live preview.
+Most PDF tools ignore tabular data. easePDF's extractor detects table structure from text-based PDFs — clustering text by Y-coordinate into rows and grouping by X-position into columns — and exports every detected table as its own sheet in a single `.xlsx`, with a tunable sensitivity slider and a live preview. If the PDF is scanned (no selectable text), it automatically OCRs each page with Tesseract.js and feeds the resulting word bounding boxes into the same detector, so scanned tables are extracted too.
 
 ### 🔍 OCR PDF — Hybrid Engine
 
