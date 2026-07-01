@@ -36,7 +36,7 @@ const DPI = parseInt(process.env.OCR_DPI || '300', 10);
 const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '20', 10); // OCR requests/min/IP
 const CONVERT_RATE_MAX = parseInt(process.env.CONVERT_RATE_MAX || '10', 10); // PDF→DOCX requests/min/IP
 const CONVERT_TIMEOUT_MS = parseInt(process.env.CONVERT_TIMEOUT_MS || '120000', 10); // 2 min cap per conversion
-const EXEC_BUFFER = 1024 * 1024 * 128; // 128 MB stdout cap for tesseract/pdftoppm/libreoffice
+const EXEC_BUFFER = 1024 * 1024 * 128; // 128 MB stdout cap for tesseract/pdftoppm/pdf2docx
 
 // Languages we ship traineddata for — MUST match the tesseract-ocr-* packages
 // installed in the Dockerfile and the language dropdown in the frontend.
@@ -67,7 +67,7 @@ const ocrLimiter = rateLimit({
   message: { error: 'Too many OCR requests — please wait a minute and try again.' }
 });
 
-// Separate limiter for /pdf-to-docx — LibreOffice is heavier so we cap tighter.
+// Separate limiter for /pdf-to-docx — pdf2docx is heavier so we cap tighter.
 const convertLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: CONVERT_RATE_MAX,

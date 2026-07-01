@@ -556,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="option-group">
                     <label for="pdf-word-mode">Conversion engine</label>
                     <select id="pdf-word-mode">
-                        <option value="server">Server (near-exact — LibreOffice; file is uploaded)</option>
+                        <option value="server">Server (near-exact — layout-aware; file is uploaded)</option>
                         <option value="text">In-browser text (detects paragraphs, headings, bold/italic)</option>
                         <option value="image">In-browser page images (visual only, not editable)</option>
                     </select>
@@ -576,11 +576,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (mode === 'server' && OCR_BACKEND_URL) {
                     try {
-                        showLoader('Converting via server — LibreOffice (up to ~30s on cold start)…');
+                        showLoader('Converting via server (up to ~30s on cold start)…');
                         const blob = await convertPdfToDocxViaBackend(file);
                         hideLoader();
                         createDownloadLink(blob, `${baseName}.docx`, docxType);
-                        showToast('✅ Converted using native LibreOffice on the server');
+                        showToast('✅ Converted using layout-aware server engine');
                         return;
                     } catch (err) {
                         console.warn('Backend convert failed — falling back to in-browser text mode:', err);
@@ -964,7 +964,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return [String(data.text || '').trim()];
     }
 
-    // ── PDF→DOCX BACKEND (native LibreOffice) ─────────────────────────────
+    // ── PDF→DOCX BACKEND (layout-aware pdf2docx) ──────────────────────────
     async function convertPdfToDocxViaBackend(file) {
         const base = OCR_BACKEND_URL.replace(/\/+$/, '');
         const fd = new FormData();

@@ -33,7 +33,7 @@ and automatically falls back to in-browser engines if the server is unreachable
 | `OCR_DPI`             | `300`     | Rasterisation DPI (higher = more accurate, slower). |
 | `RATE_LIMIT_MAX`      | `20`      | Max OCR requests per minute per IP (returns 429 beyond this). |
 | `CONVERT_RATE_MAX`    | `10`      | Max PDF→DOCX requests per minute per IP. |
-| `CONVERT_TIMEOUT_MS`  | `120000`  | Hard cap per LibreOffice conversion (2 min). |
+| `CONVERT_TIMEOUT_MS`  | `120000`  | Hard cap per pdf2docx conversion (2 min). |
 
 ## Run locally
 
