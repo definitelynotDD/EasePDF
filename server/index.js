@@ -1,14 +1,20 @@
 'use strict';
 
-// ── easePDF OCR backend ──────────────────────────────────────────────────
-// A tiny Express service that runs the *native* Tesseract engine.
-// PDFs are rasterised to PNG pages with poppler (pdftoppm) at a configurable
-// DPI, then each page is OCR'd with `tesseract`. Images are OCR'd directly.
+// ── easePDF backend ──────────────────────────────────────────────────────
+// A tiny Express service that runs two native engines:
+//   • Tesseract   — OCR for scanned PDFs and images (POST /ocr)
+//   • LibreOffice — exact PDF→DOCX conversion        (POST /pdf-to-docx)
+//
+// Both endpoints follow the same pattern: rate-limited multipart upload,
+// per-request tmp dir, generic error messages to clients (full detail in
+// server logs only).
 //
 // Endpoints:
-//   GET  /health  → "ok"            (used by the keep-alive cron)
-//   POST /ocr     → multipart form  (field "file", optional "lang")
-//                   returns { engine, lang, pages: [...], text }
+//   GET  /health        → "ok"          (used by the keep-alive cron)
+//   POST /ocr           → multipart      field "file", optional "lang"
+//                         returns { engine, lang, pages: [...], text }
+//   POST /pdf-to-docx   → multipart      field "file"
+//                         returns the converted .docx as a binary stream
 
 const express = require('express');
 const cors = require('cors');
@@ -28,7 +34,9 @@ const MAX_FILE_MB = parseInt(process.env.MAX_FILE_MB || '50', 10);
 const MAX_PAGES = parseInt(process.env.MAX_PAGES || '50', 10);
 const DPI = parseInt(process.env.OCR_DPI || '300', 10);
 const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '20', 10); // OCR requests/min/IP
-const EXEC_BUFFER = 1024 * 1024 * 128; // 128 MB stdout cap for tesseract/pdftoppm
+const CONVERT_RATE_MAX = parseInt(process.env.CONVERT_RATE_MAX || '10', 10); // PDF→DOCX requests/min/IP
+const CONVERT_TIMEOUT_MS = parseInt(process.env.CONVERT_TIMEOUT_MS || '120000', 10); // 2 min cap per conversion
+const EXEC_BUFFER = 1024 * 1024 * 128; // 128 MB stdout cap for tesseract/pdftoppm/libreoffice
 
 // Languages we ship traineddata for — MUST match the tesseract-ocr-* packages
 // installed in the Dockerfile and the language dropdown in the frontend.
@@ -59,9 +67,18 @@ const ocrLimiter = rateLimit({
   message: { error: 'Too many OCR requests — please wait a minute and try again.' }
 });
 
+// Separate limiter for /pdf-to-docx — LibreOffice is heavier so we cap tighter.
+const convertLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: CONVERT_RATE_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many conversion requests — please wait a minute and try again.' }
+});
+
 app.get('/health', (req, res) => res.type('text/plain').send('ok'));
 app.get('/', (req, res) =>
-  res.type('text/plain').send('easePDF OCR backend — POST a file to /ocr (field "file").'));
+  res.type('text/plain').send('easePDF backend — POST /ocr or /pdf-to-docx (multipart field "file").'));
 
 app.post('/ocr', ocrLimiter, upload.single('file'), async (req, res) => {
   if (!req.file) {
@@ -107,6 +124,57 @@ app.post('/ocr', ocrLimiter, upload.single('file'), async (req, res) => {
   } catch (err) {
     console.error('[ocr] failed:', err); // full detail in server logs only
     res.status(500).json({ error: 'OCR processing failed. Please try a different file or try again later.' });
+  } finally {
+    fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+  }
+});
+
+// POST /pdf-to-docx — exact PDF→DOCX conversion via headless LibreOffice.
+// Returns the .docx binary directly (Content-Disposition: attachment).
+app.post('/pdf-to-docx', convertLimiter, upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded — use multipart field name "file".' });
+  }
+  const ext = (path.extname(req.file.originalname) || '').toLowerCase();
+  const isPdf = ext === '.pdf' || req.file.mimetype === 'application/pdf';
+  if (!isPdf) {
+    return res.status(400).json({ error: 'Expected a PDF file.' });
+  }
+
+  const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdf2docx-'));
+  try {
+    const inputPath = path.join(workDir, 'input.pdf');
+    await fs.writeFile(inputPath, req.file.buffer);
+
+    // Per-request UserInstallation profile prevents lock contention when two
+    // concurrent requests hit the shared default profile. Costs ~3-5s of
+    // first-time profile setup per call, but the build-time pre-warm copy
+    // already populated the registry templates so it's mostly directory I/O.
+    const profileDir = path.join(workDir, 'lo-profile');
+    await execFileAsync('libreoffice', [
+      `-env:UserInstallation=file://${profileDir}`,
+      '--headless',
+      '--convert-to', 'docx',
+      '--outdir', workDir,
+      inputPath
+    ], { maxBuffer: EXEC_BUFFER, timeout: CONVERT_TIMEOUT_MS });
+
+    // LibreOffice names the output by stripping the input extension and
+    // appending .docx, so input.pdf → input.docx in the same outdir.
+    const docxBytes = await fs.readFile(path.join(workDir, 'input.docx'));
+
+    // Build a download filename based on the user's original name, sanitised.
+    const baseName = (req.file.originalname || 'converted.pdf').replace(/\.[^./\\]+$/, '');
+    const safeName = baseName.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 80) || 'converted';
+
+    res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.set('Content-Disposition', `attachment; filename="${safeName}.docx"`);
+    res.send(docxBytes);
+  } catch (err) {
+    console.error('[pdf-to-docx] failed:', err); // full detail in server logs only
+    res.status(500).json({
+      error: 'PDF conversion failed. The file may be password-protected, corrupt, or use unsupported features.'
+    });
   } finally {
     fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   }

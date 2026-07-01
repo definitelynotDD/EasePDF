@@ -39,7 +39,7 @@
 
 **easePDF Toolkit** is a zero-backend-by-default web app offering **14 PDF tools** — merge, split, compress, convert, watermark, extract tables to Excel, OCR, and more. The core design principle: **your files never leave your device.** All standard tools run 100% client-side using WebAssembly and JS libraries; nothing is uploaded to a server.
 
-The one exception is **OCR**, which offers a **hybrid architecture**: it prefers a self-hosted native [Tesseract](https://github.com/tesseract-ocr/tesseract) backend for maximum accuracy, but **automatically falls back** to an in-browser WebAssembly engine if the server is unavailable — so the app degrades gracefully and never breaks.
+Two tools use an optional **hybrid architecture** for higher fidelity: **OCR** prefers a self-hosted native [Tesseract](https://github.com/tesseract-ocr/tesseract) backend, and **PDF → Word** prefers a self-hosted headless [LibreOffice](https://www.libreoffice.org/) converter (the open-source gold standard for exact PDF → DOCX). Both **automatically fall back** to an in-browser engine if the server is unavailable — so the app degrades gracefully and never breaks.
 
 > **Why it's interesting (engineering-wise):** client-side document processing, a graceful-degradation hybrid OCR pipeline, a hardened Content-Security-Policy, a containerized microservice, and a free-tier keep-alive strategy — all in a dependency-light, build-step-free codebase.
 
@@ -51,7 +51,7 @@ The one exception is **OCR**, which offers a **hybrid architecture**: it prefers
 |---|---|
 | 📦 **Organize** | Merge PDF · Split PDF · Rotate PDF |
 | ✏️ **Edit** | Add Page Numbers · Watermark PDF |
-| 🔄 **Convert** | JPG→PDF · PNG→PDF · PDF→JPG · PDF→Word · Word→PDF · Excel→PDF |
+| 🔄 **Convert** | JPG→PDF · PNG→PDF · PDF→JPG · **PDF→Word** ⭐ · Word→PDF · Excel→PDF |
 | 📊 **Extract** | **PDF Tables → Excel** ⭐ · **OCR PDF** (scanned → text) ⭐ |
 | ⚙️ **Optimize** | Compress PDF |
 
@@ -76,7 +76,19 @@ Turns **scanned PDFs and images into selectable text**, with a two-tier engine:
 
 If the backend is configured and reachable, OCR runs there and the UI shows a green **🖥️ Native** badge; otherwise it transparently falls back to the in-browser engine (blue **🌐** badge) so the feature **always works**. Results can be copied or exported as `.txt` / `.docx`.
 
-> ⚠️ **Privacy note:** standard tools never upload anything. Only the *native OCR* mode sends the file to the backend for processing; the in-browser fallback keeps everything local.
+### 📝 PDF → Word — Three engines, one dropdown
+
+PDFs aren't structured documents — they're page-layout containers — so *exact* client-side conversion is impossible. easePDF offers three engines you can pick from, with the highest-fidelity one as default:
+
+| Mode | Engine | Where it runs | Preserves |
+|---|---|---|---|
+| **Server** (default) | Native LibreOffice `--convert-to docx` | Render backend | Layout, fonts, tables, columns — near-exact |
+| **In-browser text** | PDF.js + custom line/paragraph clustering | The browser | Paragraphs, headings, bold/italic |
+| **In-browser images** | PDF.js canvas + `ImageRun` in DOCX | The browser | Exact appearance (not editable as text) |
+
+The server mode automatically falls back to in-browser text mode if the backend is unreachable, so the tool never dead-ends.
+
+> ⚠️ **Privacy note:** standard tools never upload anything. Only **native OCR** and **server-mode PDF → Word** send files to the backend; every other mode of every other tool keeps files 100% local.
 
 ---
 
@@ -92,24 +104,24 @@ flowchart LR
         FE["HTML · CSS · Vanilla JS<br/>14 in-browser tools<br/>pdf-lib · PDF.js · SheetJS"]
     end
 
-    subgraph R["OCR Backend · Render (Docker)"]
-        BE["Express API<br/>native tesseract + poppler"]
+    subgraph R["Backend · Render (Docker)"]
+        BE["Express API<br/>tesseract + poppler + libreoffice"]
     end
 
     U --> FE
-    FE -- "scanned PDF / image" --> Q{"backend configured<br/>& reachable?"}
+    FE -- "OCR / PDF→DOCX" --> Q{"backend configured<br/>& reachable?"}
     Q -- yes --> BE
-    Q -- "no / offline" --> WASM["In-browser Tesseract.js<br/>(WASM fallback)"]
-    BE -- "extracted text" --> FE
-    WASM -- "extracted text" --> FE
+    Q -- "no / offline" --> WASM["In-browser fallback<br/>(Tesseract.js · PDF.js heuristics)"]
+    BE -- "text / docx" --> FE
+    WASM -- "text / docx" --> FE
 
     CRON["cron-job.org<br/>every 5 min"] -- "GET /health" --> BE
 ```
 
 **Design decisions:**
 
-- **Client-side first** — all non-OCR tools use WASM/JS libs, so there's no server to run, scale, or pay for, and user files stay private.
-- **Graceful degradation** — the OCR tool tries the native backend, catches any failure (cold start, CORS, offline), and falls back to WASM without the user hitting a dead end.
+- **Client-side first** — 12 of the 14 tools run entirely in the browser via WASM/JS libs, so there's no server to run, scale, or pay for, and user files stay private. Only OCR and the highest-fidelity PDF→Word mode use the backend.
+- **Graceful degradation** — both hybrid tools try the native backend, catch any failure (cold start, CORS, offline), and fall back to their in-browser engines without the user hitting a dead end.
 - **Hardened CSP** — a strict `Content-Security-Policy` whitelists exactly the script/connect/worker origins required (CDN libs, the OCR WASM `data:` core, and the backend), blocking everything else.
 - **Free-tier keep-alive** — Render's free instance sleeps after 15 min idle; an external cron pings `/health` every 5 min to keep the native engine warm, with cold-start fallback handled client-side.
 
@@ -125,8 +137,9 @@ flowchart LR
 - [mammoth.js](https://github.com/mwilliamson/mammoth.js) · [html2pdf.js](https://github.com/eKoopmans/html2pdf.js) · [docx](https://github.com/dolanmiu/docx) · [JSZip](https://stuk.github.io/jszip/) · [DOMPurify](https://github.com/cure53/DOMPurify)
 
 **Backend** (`server/`)
-- Node.js + [Express](https://expressjs.com/) · [Multer](https://github.com/expressjs/multer)
+- Node.js + [Express](https://expressjs.com/) · [Multer](https://github.com/expressjs/multer) · [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit)
 - Native [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) + [Poppler](https://poppler.freedesktop.org/) (`pdftoppm`)
+- Headless [LibreOffice](https://www.libreoffice.org/) (`--convert-to docx`)
 - Docker
 
 **Infrastructure**

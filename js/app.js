@@ -547,32 +547,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
         'pdf-to-word': {
             title: 'PDF to Word',
-            desc: 'Convert a PDF to an editable Word document with detected structure.',
+            desc: 'Convert a PDF to an editable Word document. Server mode is near-exact.',
             icon: '📝',
             category: 'Convert',
             fileType: '.pdf',
             multiple: false,
             options: () => `
                 <div class="option-group">
-                    <label for="pdf-word-mode">Output style</label>
+                    <label for="pdf-word-mode">Conversion engine</label>
                     <select id="pdf-word-mode">
-                        <option value="text">Editable text — detects paragraphs, headings, bold/italic (recommended)</option>
-                        <option value="image">Page images — embeds each page as picture (exact look, not editable)</option>
+                        <option value="server">Server (near-exact — LibreOffice; file is uploaded)</option>
+                        <option value="text">In-browser text (detects paragraphs, headings, bold/italic)</option>
+                        <option value="image">In-browser page images (visual only, not editable)</option>
                     </select>
                 </div>
                 <p style="font-size:.78rem;color:var(--muted);margin-top:-4px;line-height:1.5">
-                    ⓘ PDFs are layout containers, not structured documents, so a 100% exact rebuild
-                    isn't possible in editable mode — complex multi-column layouts and tables come
-                    out jumbled. For tabular data, use the <strong>PDF Tables → Excel</strong> tool
-                    instead. Use page-image mode when appearance matters more than editing.
+                    ⓘ Server mode gives the closest match to the original — layout, fonts, tables and
+                    columns are preserved. Only this tool uploads your file (to the OCR/convert backend);
+                    all other tools stay 100% in your browser. In-browser modes never upload, but complex
+                    layouts and tables get jumbled — for tables use <strong>PDF Tables → Excel</strong>.
                 </p>
             `,
             process: async (options) => {
-                const mode = options['pdf-word-mode'] || 'text';
-                showLoader('Loading PDF…');
-                const bytes = await selectedFiles[0].arrayBuffer();
-                const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+                const mode = options['pdf-word-mode'] || 'server';
+                const file = selectedFiles[0];
+                const baseName = file.name.replace(/\.pdf$/i, '') || 'converted';
+                const docxType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
+                if (mode === 'server' && OCR_BACKEND_URL) {
+                    try {
+                        showLoader('Converting via server — LibreOffice (up to ~30s on cold start)…');
+                        const blob = await convertPdfToDocxViaBackend(file);
+                        hideLoader();
+                        createDownloadLink(blob, `${baseName}.docx`, docxType);
+                        showToast('✅ Converted using native LibreOffice on the server');
+                        return;
+                    } catch (err) {
+                        console.warn('Backend convert failed — falling back to in-browser text mode:', err);
+                        showToast('⚠️ Server unavailable — falling back to in-browser text extraction');
+                        // fall through to client-side text mode below
+                    }
+                }
+
+                showLoader('Loading PDF…');
+                const bytes = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
                 const children = mode === 'image'
                     ? await buildImageBasedDocxChildren(pdf)
                     : await buildStructuredDocxChildren(pdf);
@@ -581,8 +600,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const d = new docx.Document({ sections: [{ children }] });
                 const blob = await docx.Packer.toBlob(d);
                 hideLoader();
-                createDownloadLink(blob, 'extracted.docx',
-                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+                createDownloadLink(blob, `${baseName}.docx`, docxType);
             }
         },
 
@@ -944,6 +962,20 @@ document.addEventListener('DOMContentLoaded', () => {
             return data.pages.map(t => (t || '').trim());
         }
         return [String(data.text || '').trim()];
+    }
+
+    // ── PDF→DOCX BACKEND (native LibreOffice) ─────────────────────────────
+    async function convertPdfToDocxViaBackend(file) {
+        const base = OCR_BACKEND_URL.replace(/\/+$/, '');
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(base + '/pdf-to-docx', { method: 'POST', body: fd });
+        if (!res.ok) {
+            let msg = `Convert server responded ${res.status}`;
+            try { const j = await res.json(); if (j && j.error) msg = j.error; } catch { /* body may be binary/HTML */ }
+            throw new Error(msg);
+        }
+        return await res.blob();
     }
 
     // ── OCR RESULT ────────────────────────────────────────────────────────
