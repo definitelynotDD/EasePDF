@@ -1,3 +1,13 @@
+---
+title: easePDF Backend
+emoji: 📝
+colorFrom: red
+colorTo: pink
+sdk: docker
+app_port: 10000
+pinned: false
+---
+
 # easePDF backend (native Tesseract + pdf2docx)
 
 A small Express service that runs two native engines:
@@ -62,19 +72,54 @@ docker build -t easepdf-ocr .
 docker run -p 10000:10000 easepdf-ocr
 ```
 
-## Deploy to Render (free)
+## Deploy to HuggingFace Spaces (recommended, free)
+
+HuggingFace's free tier gives every Space **much more RAM than Render's free
+tier** (typically several GB vs 512 MB), which matters here because pdf2docx +
+PyMuPDF + opencv-python-headless have a ~200 MB baseline before doing any real
+work. Render's free tier OOMs on modest PDFs; HF Spaces handles them fine.
+
+1. Create an account on [huggingface.co](https://huggingface.co) if you don't have one.
+2. Go to [huggingface.co/new-space](https://huggingface.co/new-space):
+   - Space name: e.g. `easepdf-backend`
+   - License: MIT (or match the repo)
+   - SDK: **Docker → Blank**
+   - Hardware: **CPU basic** (free)
+   - Visibility: Public
+3. Copy the contents of this `server/` folder into the new Space's git repo:
+   ```bash
+   git clone https://huggingface.co/spaces/<your-hf-username>/easepdf-backend
+   cd easepdf-backend
+   cp -r ../EasePDF/server/* .
+   git add .
+   git commit -m "Initial deploy"
+   git push
+   ```
+   The push triggers a build; HF reads the YAML frontmatter at the top of this
+   README to know the port and SDK.
+4. First build takes ~10–15 min (installs Tesseract, poppler, pdf2docx). Once
+   it goes green, your backend is live at
+   `https://<your-hf-username>-easepdf-backend.hf.space`.
+5. Wire it into the frontend:
+   - In `js/app.js`, set `OCR_BACKEND_URL` to that URL.
+   - In `vercel.json`, add that URL to the CSP `connect-src` directive.
+   - Redeploy the frontend.
+6. Keep it warm: point an external pinger at `GET /health` every 5 minutes
+   (this project uses cron-job.org; UptimeRobot works too). HF Spaces sleep
+   after ~48h of inactivity on free tier.
+
+### Alternative: deploy to Render (free tier — OOM warning)
+
+Render's free tier has a 512 MB memory ceiling that pdf2docx blows past on
+non-trivial PDFs. If you deploy here anyway (perhaps just for OCR without the
+PDF→DOCX endpoint), the same Dockerfile works:
 
 1. Push this repo to GitHub.
 2. On [render.com](https://render.com): **New → Blueprint**, select the repo.
    Render reads `render.yaml` and builds `server/Dockerfile`.
-   (Or **New → Web Service**, set **Root Directory** = `server`, **Runtime** = Docker.)
-3. After it deploys you'll get a URL like `https://easepdf-ocr.onrender.com`.
-4. Wire it into the frontend:
-   - In `js/app.js`, set `OCR_BACKEND_URL` to that URL.
-   - In `vercel.json`, add that URL to the CSP `connect-src` directive.
-   - Redeploy the frontend.
-5. Keep it warm: point an external pinger at `GET /health` every 5 minutes
-   (this project uses cron-job.org; UptimeRobot works too).
+3. After it deploys you'll get a URL like `https://<name>.onrender.com`.
+4. Wire it into the frontend as in step 5 above.
+5. Keep warm as in step 6 above.
 
 ## Languages (OCR only)
 

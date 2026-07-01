@@ -44,8 +44,15 @@ RUN npm install --omit=dev
 
 COPY . .
 
+# HuggingFace Spaces requires containers to run as non-root (uid 1000).
+# Render is fine either way, so a single Dockerfile serves both hosts.
+# Create the user and hand over the app dir before switching in.
+RUN useradd -m -u 1000 user \
+    && chown -R user:user /app
+
 ENV NODE_ENV=production
 ENV PORT=10000
 EXPOSE 10000
 
+USER user
 CMD ["node", "index.js"]
