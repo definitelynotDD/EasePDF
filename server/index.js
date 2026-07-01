@@ -278,4 +278,7 @@ async function runTesseractTsv(imgPath, lang) {
   return { width, height, words };
 }
 
-app.listen(PORT, () => console.log(`easePDF OCR backend listening on :${PORT}`));
+// Bind explicitly to 0.0.0.0 so Render's IPv4 port scanner sees us. Without a
+// host arg Node uses `::` (IPv6 dual-stack) which usually works but has been
+// flaky on Render — the port scan can time out even when the process is up.
+app.listen(PORT, '0.0.0.0', () => console.log(`easePDF backend listening on 0.0.0.0:${PORT}`));

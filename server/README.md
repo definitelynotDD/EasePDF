@@ -38,8 +38,7 @@ and automatically falls back to in-browser engines if the server is unreachable
 Defaults above are tuned for **Render's 512 MB free tier**. On a paid plan
 with more RAM you can safely raise `MAX_FILE_MB`, `MAX_PAGES`, and `OCR_DPI`
 to the previous values (50 / 50 / 300) for larger files and better OCR
-accuracy. Also unset `NODE_OPTIONS` in the Dockerfile if you don't need to
-cap Node's V8 heap.
+accuracy.
 
 ## Run locally
 

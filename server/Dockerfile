@@ -46,10 +46,6 @@ COPY . .
 
 ENV NODE_ENV=production
 ENV PORT=10000
-# Cap V8 old-space so Node doesn't balloon during request handling. Render's
-# free tier has a 512 MB total ceiling; leaving ~300 MB for the pdf2docx /
-# tesseract subprocesses matters more than giving Node a big heap it won't use.
-ENV NODE_OPTIONS="--max-old-space-size=192"
 EXPOSE 10000
 
 CMD ["node", "index.js"]
