@@ -150,18 +150,34 @@ app.post('/pdf-to-docx', convertLimiter, upload.single('file'), async (req, res)
     // concurrent requests hit the shared default profile. Costs ~3-5s of
     // first-time profile setup per call, but the build-time pre-warm copy
     // already populated the registry templates so it's mostly directory I/O.
+    //
+    // --infilter="writer_pdf_import" is REQUIRED: without it LibreOffice
+    // opens PDFs in Draw (the default handler), Draw has no DOCX export
+    // filter, and the command exits 0 with no output file — so the readFile
+    // below fails with ENOENT. Forcing the Writer PDF-import filter routes
+    // the file through Writer, which does have the DOCX export filter.
     const profileDir = path.join(workDir, 'lo-profile');
-    await execFileAsync('libreoffice', [
+    const { stdout: loStdout, stderr: loStderr } = await execFileAsync('libreoffice', [
       `-env:UserInstallation=file://${profileDir}`,
       '--headless',
+      '--infilter=writer_pdf_import',
       '--convert-to', 'docx',
       '--outdir', workDir,
       inputPath
     ], { maxBuffer: EXEC_BUFFER, timeout: CONVERT_TIMEOUT_MS });
 
     // LibreOffice names the output by stripping the input extension and
-    // appending .docx, so input.pdf → input.docx in the same outdir.
-    const docxBytes = await fs.readFile(path.join(workDir, 'input.docx'));
+    // appending .docx, so input.pdf → input.docx in the same outdir. LO can
+    // still exit 0 with no file for some malformed PDFs, so guard the read.
+    const outputPath = path.join(workDir, 'input.docx');
+    let docxBytes;
+    try {
+      docxBytes = await fs.readFile(outputPath);
+    } catch {
+      console.error('[pdf-to-docx] LibreOffice exited 0 but produced no output.',
+        '\n  stdout:', loStdout, '\n  stderr:', loStderr);
+      throw new Error('Conversion produced no output file — the PDF may be encrypted, image-only, or use unsupported features.');
+    }
 
     // Build a download filename based on the user's original name, sanitised.
     const baseName = (req.file.originalname || 'converted.pdf').replace(/\.[^./\\]+$/, '');
