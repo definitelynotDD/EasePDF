@@ -38,9 +38,12 @@ const execFileAsync = promisify(execFile);
 
 const PORT = process.env.PORT || 10000;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
-const MAX_FILE_MB = parseInt(process.env.MAX_FILE_MB || '50', 10);
-const MAX_PAGES = parseInt(process.env.MAX_PAGES || '50', 10);
-const DPI = parseInt(process.env.OCR_DPI || '300', 10);
+// Defaults tuned for Render's 512 MB free tier. pdf2docx + PyMuPDF + opencv
+// can easily peak past 300 MB on a complex PDF, and Tesseract holds the whole
+// rasterized page image in memory, so we cap inputs conservatively.
+const MAX_FILE_MB = parseInt(process.env.MAX_FILE_MB || '25', 10);
+const MAX_PAGES = parseInt(process.env.MAX_PAGES || '20', 10);
+const DPI = parseInt(process.env.OCR_DPI || '200', 10);
 const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '20', 10); // OCR requests/min/IP
 const CONVERT_RATE_MAX = parseInt(process.env.CONVERT_RATE_MAX || '10', 10); // PDF→DOCX requests/min/IP
 const CONVERT_TIMEOUT_MS = parseInt(process.env.CONVERT_TIMEOUT_MS || '120000', 10); // 2 min cap per conversion
@@ -171,6 +174,20 @@ app.post('/pdf-to-docx', convertLimiter, upload.single('file'), async (req, res)
     const inputPath = path.join(workDir, 'input.pdf');
     const outputPath = path.join(workDir, 'output.docx');
     await fs.writeFile(inputPath, req.file.buffer);
+
+    // Cheap page-count check via pdfinfo (already in poppler-utils). Rejecting
+    // an oversized PDF here costs ~10ms; letting it into pdf2docx costs the
+    // entire container's memory ceiling and may OOM-kill the instance.
+    try {
+      const { stdout: infoOut } = await execFileAsync('pdfinfo', [inputPath], { maxBuffer: 1024 * 64 });
+      const pagesMatch = /^Pages:\s*(\d+)/m.exec(infoOut);
+      const pageCount = pagesMatch ? parseInt(pagesMatch[1], 10) : 0;
+      if (pageCount > MAX_PAGES) {
+        return res.status(413).json({
+          error: `PDF has ${pageCount} pages — this server caps conversions at ${MAX_PAGES} pages. Split the PDF first or run this locally.`
+        });
+      }
+    } catch { /* if pdfinfo fails, let pdf2docx try anyway */ }
 
     const { stdout, stderr } = await execFileAsync('pdf2docx', [
       'convert', inputPath, outputPath

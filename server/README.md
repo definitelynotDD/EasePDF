@@ -28,12 +28,18 @@ and automatically falls back to in-browser engines if the server is unreachable
 |-----------------------|-----------|-------|
 | `PORT`                | `10000`   | Set automatically by Render. |
 | `ALLOWED_ORIGIN`      | `*`       | CORS origin(s), comma-separated. Lock to your site in production. |
-| `MAX_FILE_MB`         | `50`      | Upload size limit (applies to both endpoints). |
-| `MAX_PAGES`           | `50`      | Max PDF pages OCR'd per request. |
-| `OCR_DPI`             | `300`     | Rasterisation DPI (higher = more accurate, slower). |
+| `MAX_FILE_MB`         | `25`      | Upload size limit (applies to both endpoints). Tuned for Render free tier. |
+| `MAX_PAGES`           | `20`      | Max PDF pages per request. `/pdf-to-docx` rejects larger PDFs upfront via `pdfinfo`. |
+| `OCR_DPI`             | `200`     | Rasterisation DPI (higher = more accurate, more memory). |
 | `RATE_LIMIT_MAX`      | `20`      | Max OCR requests per minute per IP (returns 429 beyond this). |
 | `CONVERT_RATE_MAX`    | `10`      | Max PDF→DOCX requests per minute per IP. |
 | `CONVERT_TIMEOUT_MS`  | `120000`  | Hard cap per pdf2docx conversion (2 min). |
+
+Defaults above are tuned for **Render's 512 MB free tier**. On a paid plan
+with more RAM you can safely raise `MAX_FILE_MB`, `MAX_PAGES`, and `OCR_DPI`
+to the previous values (50 / 50 / 300) for larger files and better OCR
+accuracy. Also unset `NODE_OPTIONS` in the Dockerfile if you don't need to
+cap Node's V8 heap.
 
 ## Run locally
 
