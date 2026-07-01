@@ -547,7 +547,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         'pdf-to-word': {
             title: 'PDF to Word',
-            desc: 'Convert a PDF to an editable Word document. Server mode is near-exact.',
+            desc: 'Convert a PDF to Word. Auto-handles native-text and scanned PDFs.',
             icon: '📝',
             category: 'Convert',
             fileType: '.pdf',
@@ -556,35 +556,70 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="option-group">
                     <label for="pdf-word-mode">Conversion engine</label>
                     <select id="pdf-word-mode">
-                        <option value="server">Server (near-exact — layout-aware; file is uploaded)</option>
-                        <option value="text">In-browser text (detects paragraphs, headings, bold/italic)</option>
+                        <option value="server">Server auto — layout-aware for native text, OCR for scanned</option>
+                        <option value="text">In-browser text (paragraphs, headings, bold/italic)</option>
                         <option value="image">In-browser page images (visual only, not editable)</option>
                     </select>
                 </div>
+                <div class="option-group">
+                    <label for="pdf-word-ocr-lang">Document language <span style="color:var(--muted);font-weight:400">(used only if the PDF is scanned)</span></label>
+                    <select id="pdf-word-ocr-lang">
+                        <option value="eng">English</option>
+                        <option value="spa">Spanish</option>
+                        <option value="fra">French</option>
+                        <option value="deu">German</option>
+                        <option value="ita">Italian</option>
+                        <option value="por">Portuguese</option>
+                        <option value="nld">Dutch</option>
+                        <option value="hin">Hindi</option>
+                        <option value="rus">Russian</option>
+                        <option value="ara">Arabic</option>
+                        <option value="chi_sim">Chinese (Simplified)</option>
+                        <option value="jpn">Japanese</option>
+                    </select>
+                </div>
                 <p style="font-size:.78rem;color:var(--muted);margin-top:-4px;line-height:1.5">
-                    ⓘ Server mode gives the closest match to the original — layout, fonts, tables and
-                    columns are preserved. Only this tool uploads your file (to the OCR/convert backend);
-                    all other tools stay 100% in your browser. In-browser modes never upload, but complex
-                    layouts and tables get jumbled — for tables use <strong>PDF Tables → Excel</strong>.
+                    ⓘ Server mode automatically detects whether the PDF has selectable text or is a
+                    scanned image, and picks the right engine (layout-aware conversion or OCR).
+                    Only this tool uploads your file (to the OCR/convert backend); all other tools
+                    stay 100% in your browser. For tables use <strong>PDF Tables → Excel</strong>.
                 </p>
             `,
             process: async (options) => {
                 const mode = options['pdf-word-mode'] || 'server';
+                const ocrLang = options['pdf-word-ocr-lang'] || 'eng';
                 const file = selectedFiles[0];
                 const baseName = file.name.replace(/\.pdf$/i, '') || 'converted';
                 const docxType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
+                let scanned = false;
                 if (mode === 'server' && OCR_BACKEND_URL) {
                     try {
-                        showLoader('Converting via server (up to ~30s on cold start)…');
-                        const blob = await convertPdfToDocxViaBackend(file);
-                        hideLoader();
-                        createDownloadLink(blob, `${baseName}.docx`, docxType);
-                        showToast('✅ Converted using layout-aware server engine');
+                        showLoader('Analysing PDF…');
+                        const bytes = await file.arrayBuffer();
+                        const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+                        scanned = await isPdfScanned(pdf);
+
+                        if (scanned) {
+                            showLoader('Scanned document — OCR then build DOCX (may take 30s+)…');
+                            const pages = await ocrViaBackend(file, ocrLang);
+                            const blob = await buildDocxFromOcrPages(pages);
+                            hideLoader();
+                            createDownloadLink(blob, `${baseName}.docx`, docxType);
+                            showToast('✅ Converted scanned document using OCR');
+                        } else {
+                            showLoader('Converting via server (up to ~30s on cold start)…');
+                            const blob = await convertPdfToDocxViaBackend(file);
+                            hideLoader();
+                            createDownloadLink(blob, `${baseName}.docx`, docxType);
+                            showToast('✅ Converted using layout-aware server engine');
+                        }
                         return;
                     } catch (err) {
                         console.warn('Backend convert failed — falling back to in-browser text mode:', err);
-                        showToast('⚠️ Server unavailable — falling back to in-browser text extraction');
+                        showToast(scanned
+                            ? '⚠️ Server unavailable and this looks scanned — the fallback will be near-empty; try "Page images" mode'
+                            : '⚠️ Server unavailable — falling back to in-browser text extraction');
                         // fall through to client-side text mode below
                     }
                 }
@@ -846,6 +881,46 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         return children;
+    }
+
+    // Heuristic: sample the first few pages and decide the PDF is "scanned"
+    // (image-only, no selectable text) if the average character count per page
+    // is below a small threshold. Real text PDFs usually have hundreds of
+    // characters per page even on a mostly-blank page.
+    async function isPdfScanned(pdf) {
+        const pagesToCheck = Math.min(3, pdf.numPages);
+        let totalChars = 0;
+        for (let i = 1; i <= pagesToCheck; i++) {
+            const pg = await pdf.getPage(i);
+            const content = await pg.getTextContent();
+            totalChars += content.items.reduce((sum, it) => sum + (it.str || '').length, 0);
+        }
+        return totalChars / pagesToCheck < 50;
+    }
+
+    // Build a DOCX from an array of per-page OCR text (as returned by /ocr).
+    // Splits each page on blank lines to make rough paragraphs, and inserts a
+    // page break between OCR'd pages so pagination matches the source.
+    async function buildDocxFromOcrPages(pageTexts) {
+        const { Paragraph, TextRun, PageBreak } = docx;
+        const children = [];
+        pageTexts.forEach((pageText, i) => {
+            const paragraphs = (pageText || '').split(/\n\s*\n/);
+            for (const p of paragraphs) {
+                const text = p.replace(/\s+/g, ' ').trim();
+                if (text) {
+                    children.push(new Paragraph({
+                        children: [new TextRun({ text })],
+                        spacing: { after: 120 }
+                    }));
+                }
+            }
+            if (i < pageTexts.length - 1) {
+                children.push(new Paragraph({ children: [new PageBreak()] }));
+            }
+        });
+        const d = new docx.Document({ sections: [{ children }] });
+        return await docx.Packer.toBlob(d);
     }
 
     async function buildImageBasedDocxChildren(pdf) {

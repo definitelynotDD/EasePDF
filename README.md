@@ -82,11 +82,11 @@ PDFs aren't structured documents — they're page-layout containers — so *exac
 
 | Mode | Engine | Where it runs | Preserves |
 |---|---|---|---|
-| **Server** (default) | pdf2docx (PyMuPDF-based layout analysis) | Render backend | Layout, fonts, tables, columns — near-exact editable output |
+| **Server** (default) | pdf2docx for native text · Tesseract OCR if scanned (auto-detected) | Render backend | Layout, fonts, tables, columns — near-exact editable output; scanned pages become OCR'd text |
 | **In-browser text** | PDF.js + custom line/paragraph clustering | The browser | Paragraphs, headings, bold/italic |
 | **In-browser images** | PDF.js canvas + `ImageRun` in DOCX | The browser | Exact appearance (not editable as text) |
 
-The server mode automatically falls back to in-browser text mode if the backend is unreachable, so the tool never dead-ends.
+Server mode auto-detects whether each PDF has selectable text or is a scanned image and routes to the right engine. If the backend is unreachable, it falls back to in-browser text mode so the tool never dead-ends.
 
 > ⚠️ **Privacy note:** standard tools never upload anything. Only **native OCR** and **server-mode PDF → Word** send files to the backend; every other mode of every other tool keeps files 100% local.
 

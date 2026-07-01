@@ -89,3 +89,12 @@ To add more, install the matching `tesseract-ocr-<lang>` package in the
 - Typical conversion time: ~1–3s per page after cold start.
 - Adding Python + pdf2docx (with its opencv/PyMuPDF deps) grows the Docker
   image by ~250 MB. One-time cost — Render caches the image between deploys.
+
+### Scanned PDFs
+
+pdf2docx extracts text positions, so on a scanned (image-only) PDF it
+produces an empty DOCX. The frontend detects this case with pdf.js
+before uploading — if the PDF has no selectable text, it uses the
+existing `/ocr` endpoint instead of `/pdf-to-docx`, then builds a DOCX
+from the returned per-page text on the client. No server change was
+needed to support scanned files.
